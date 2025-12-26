@@ -212,6 +212,24 @@ class mxCFGGuider:
     def main(self, cfg):
         return (cfg,)
 
+class mxModelSamplingFloat:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "value": ("FLOAT", {"default": 1.00, "min": 0.00, "max": 15.00, "step": 0.01}),
+            },
+        }
+
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("value",)
+
+    FUNCTION = "main"
+    CATEGORY = 'utils/slider'
+
+    def main(self, value):
+        return (value,)
+
 class mxInt3:
     @classmethod
     def INPUT_TYPES(s):
@@ -259,6 +277,7 @@ NODE_CLASS_MAPPINGS = {
     "mxFloat4": mxFloat4,
     "RGBA_to_RGB_Lossless": RGBA_to_RGB_Lossless,
     "mxCFGGuider": mxCFGGuider,
+    "mxModelSamplingFloat": mxModelSamplingFloat,
     "mxInt3": mxInt3,
     "mxString3": mxString3
 }
@@ -270,6 +289,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "mxFloat4": "Float 4",
     "RGBA_to_RGB_Lossless": "RGBA zu RGB (Verlustfrei)",
     "mxCFGGuider": "CFG Guider",
+    "mxModelSamplingFloat": "Model Sampling Float",
     "mxInt3": "Int 3",
     "mxString3": "String 3"
 }

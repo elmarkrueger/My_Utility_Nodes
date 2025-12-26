@@ -29,9 +29,11 @@ My Utility Nodes is a ComfyUI custom node package that provides enhanced UI cont
 
 - **Interactive Sliders**: Custom-designed slider widgets with visual feedback
 - **Type Flexibility**: Supports both integer and float values with runtime switching
+- **Precision Control**: High-precision float sliders (0.01 steps) for fine-tuned adjustments
 - **Batch Input Handling**: Multi-value nodes for floats, integers, and strings
-- **Lossless Image Conversion**:  RGBA to RGB conversion without quality loss
-- **Enhanced CFG Control**: Specialized CFG (Classifier-Free Guidance) slider
+- **Lossless Image Conversion**: RGBA to RGB conversion without quality loss
+- **Enhanced Parameter Control**: Specialized sliders for CFG and model sampling parameters
+- **Extended Ranges**: Support for extended value ranges (0.00-15.00) for advanced use cases
 
 ---
 
@@ -69,6 +71,7 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 | **Float 5** (`mxFloat5`) | `utils/slider` | Five independent float sliders (0.0-1.0) |
 | **Float 4** (`mxFloat4`) | `utils/slider` | Four independent float sliders (0.00-1.00, 0.01 steps) |
 | **CFG Guider** (`mxCFGGuider`) | `utils/slider` | Specialized CFG parameter control |
+| **Model Sampling Float** (`mxModelSamplingFloat`) | `utils/slider` | Model sampling parameter slider (0.00-15.00) |
 
 ### Multi-Input Nodes
 
@@ -212,6 +215,34 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 
 ---
 
+### 🎯 mxModelSamplingFloat
+
+**Purpose:** Precision slider for model sampling parameters with extended range
+
+**Inputs:**
+- `value` (FLOAT): Sampling value (0.00-15.00, default: 1.00, step: 0.01)
+
+**Outputs:**
+- `value` (FLOAT): Sampling parameter value
+
+**Features:**
+- Compact single-slider design based on CFG Guider
+- High precision (0.01 steps) with 2 decimal places
+- Extended range (0.00-15.00) for advanced sampling control
+- Visual feedback with interactive slider knob
+- Snap-to-grid behavior (toggle with Shift key)
+- Direct value input via double-click
+- Customizable min/max/step/decimals in properties panel
+
+**Use Cases:**
+- Model sampling sigma adjustments
+- Advanced sampler parameter control
+- Denoise strength fine-tuning
+- Custom sampling schedule values
+- Noise level adjustments
+
+---
+
 ### 🔢 mxInt3 & mxString3
 
 **Purpose:** Batch input for multiple values of the same type
@@ -239,6 +270,7 @@ My_Utility_Nodes/
 ├── mytoolkit.py             # Python node definitions
 ├── js/                      # Frontend JavaScript extensions
 │   ├── CFGGuider.js         # CFG slider widget
+│   ├── ModelSamplingFloat.js # Model sampling slider widget
 │   ├── Slider.js            # Single-axis slider widget
 │   ├── Slider2D.js          # Dual-axis slider widget
 │   ├── MultiSlider.js       # Multi-value slider widget (5 sliders)
@@ -297,6 +329,22 @@ Generate three variations with seeds from `I1`, `I2`, `I3`.
 
 Remove alpha channel before passing to nodes that expect RGB input.
 
+### Example 4: Advanced Model Sampling Control
+
+```
+[ModelSamplingFloat] → sampling_parameter → [Custom Sampler]
+```
+
+Fine-tune model sampling parameters with 0.01 precision across 0.00-15.00 range for advanced workflows.
+
+### Example 5: Multi-LoRA Weight Control
+
+```
+[Float 4] → F1,F2,F3,F4 → [Multiple LoRA Loaders]
+```
+
+Control four different LoRA weights simultaneously with precision sliders and custom labels.
+
 ---
 
 ## License
@@ -327,6 +375,11 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 
 ## Changelog
 
+### v1.2.0 (2025)
+- Added **Model Sampling Float** (`mxModelSamplingFloat`) node for advanced sampling control
+- Extended value range (0.00-15.00) for model sampling parameters
+- Compact single-slider design with high precision
+
 ### v1.1.0 (2025)
 - Added **Float 4** (`mxFloat4`) node with higher precision (0.01 steps)
 - Enhanced slider controls with editable labels
@@ -334,10 +387,11 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 
 ### v1.0.0 (2025)
 - Initial release
-- 7 custom nodes with JavaScript UI integration
+- 9 custom nodes with JavaScript UI integration
 - RGBA to RGB lossless converter
-- Interactive slider controls
+- Interactive slider controls with customizable properties
 - Multi-value input nodes
+- Comprehensive documentation
 
 ---
 
