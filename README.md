@@ -66,7 +66,8 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 |------|----------|-------------|
 | **Slider** (`mxSlider`) | `utils/slider` | Single-axis slider with int/float toggle |
 | **Slider 2D** (`mxSlider2D`) | `utils/slider` | Dual-axis slider for X/Y coordinates |
-| **Float 5** (`mxFloat5`) | `utils/slider` | Five independent float sliders (0. 0-1.0) |
+| **Float 5** (`mxFloat5`) | `utils/slider` | Five independent float sliders (0.0-1.0) |
+| **Float 4** (`mxFloat4`) | `utils/slider` | Four independent float sliders (0.00-1.00, 0.01 steps) |
 | **CFG Guider** (`mxCFGGuider`) | `utils/slider` | Specialized CFG parameter control |
 
 ### Multi-Input Nodes
@@ -138,6 +139,32 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 - Multi-layer opacity controls
 - RGBA + alpha channel values
 - Batch parameter passing to downstream nodes
+
+---
+
+### 🔢 mxFloat4
+
+**Purpose:** Precision float slider for fine-tuned parameter control
+
+**Inputs:**
+- `F1` through `F4` (FLOAT): Four independent values (0.00-1.00, step: 0.01)
+
+**Outputs:**
+- `F1` through `F4` (FLOAT): Pass-through values
+
+**Features:**
+- Custom JavaScript slider with visual feedback
+- Higher precision (0.01 steps) compared to Float 5
+- Editable labels for each slider (double-click on label)
+- Direct value input (double-click on value)
+- Snap-to-grid behavior (toggleable with Shift key)
+- Customizable min/max/step/decimals in properties panel
+
+**Use Cases:**
+- Fine-grained parameter adjustments (e.g., LoRA weights)
+- Multi-model blending ratios
+- Precision color correction values
+- Advanced sampler parameter sets
 
 ---
 
@@ -214,7 +241,8 @@ My_Utility_Nodes/
 │   ├── CFGGuider.js         # CFG slider widget
 │   ├── Slider.js            # Single-axis slider widget
 │   ├── Slider2D.js          # Dual-axis slider widget
-│   ├── MultiSlider.js       # Multi-value slider widget
+│   ├── MultiSlider.js       # Multi-value slider widget (5 sliders)
+│   ├── MultiSlider4.js      # Multi-value slider widget (4 sliders)
 │   ├── Int3.js              # Integer input widget
 │   └── String3.js           # String input widget
 └── README.md
@@ -298,6 +326,11 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v1.1.0 (2025)
+- Added **Float 4** (`mxFloat4`) node with higher precision (0.01 steps)
+- Enhanced slider controls with editable labels
+- Improved documentation with detailed use cases
 
 ### v1.0.0 (2025)
 - Initial release

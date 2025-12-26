@@ -87,6 +87,27 @@ class mxFloat5:
     def main(self, F1, F2, F3, F4, F5):
         return (F1, F2, F3, F4, F5,)
 
+class mxFloat4:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "F1": ("FLOAT", {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01}),
+                "F2": ("FLOAT", {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01}),
+                "F3": ("FLOAT", {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01}),
+                "F4": ("FLOAT", {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01}),
+            },
+        }
+
+    RETURN_TYPES = ("FLOAT", "FLOAT", "FLOAT", "FLOAT")
+    RETURN_NAMES = ("F1", "F2", "F3", "F4")
+
+    FUNCTION = "main"
+    CATEGORY = 'utils/slider'
+
+    def main(self, F1, F2, F3, F4):
+        return (F1, F2, F3, F4,)
+
 class RGBA_to_RGB_Lossless:
     """
     Eine spezialisierte ComfyUI Custom Node zur verlustfreien Konvertierung
@@ -235,6 +256,7 @@ NODE_CLASS_MAPPINGS = {
     "mxSlider": mxSlider,
     "mxSlider2D": mxSlider2D,
     "mxFloat5": mxFloat5,
+    "mxFloat4": mxFloat4,
     "RGBA_to_RGB_Lossless": RGBA_to_RGB_Lossless,
     "mxCFGGuider": mxCFGGuider,
     "mxInt3": mxInt3,
@@ -245,6 +267,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "mxSlider": "Slider",
     "mxSlider2D": "Slider 2D",
     "mxFloat5": "Float 5",
+    "mxFloat4": "Float 4",
     "RGBA_to_RGB_Lossless": "RGBA zu RGB (Verlustfrei)",
     "mxCFGGuider": "CFG Guider",
     "mxInt3": "Int 3",
