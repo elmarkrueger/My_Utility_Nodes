@@ -270,6 +270,82 @@ class mxString3:
     def main(self, S1, S2, S3):
         return (S1, S2, S3,)
 
+class mxInputSwitch:
+    """
+    A node that switches between two Any-type inputs using visual boolean toggles.
+    Only one input can be active (True) at a time.
+    The active input is routed to the output.
+    """
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "select_A": ("INT", {"default": 1, "min": 0, "max": 1}),
+                "select_B": ("INT", {"default": 0, "min": 0, "max": 1}),
+            },
+            "optional": {
+                "input_A": (any,),
+                "input_B": (any,),
+            },
+        }
+
+    RETURN_TYPES = (any,)
+    RETURN_NAMES = ("output",)
+
+    FUNCTION = "main"
+    CATEGORY = 'utils/switch'
+
+    def main(self, select_A, select_B, input_A=None, input_B=None):
+        """
+        Routes the selected input to the output.
+        If select_A is True (1), return input_A.
+        Otherwise, return input_B.
+        """
+        if select_A > 0:
+            return (input_A,)
+        else:
+            return (input_B,)
+
+class mxInputSwitch3:
+    """
+    A node that switches between three Any-type inputs using visual boolean toggles.
+    Only one input can be active (True) at a time.
+    The active input is routed to the output.
+    """
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "select_A": ("INT", {"default": 1, "min": 0, "max": 1}),
+                "select_B": ("INT", {"default": 0, "min": 0, "max": 1}),
+                "select_C": ("INT", {"default": 0, "min": 0, "max": 1}),
+            },
+            "optional": {
+                "input_A": (any,),
+                "input_B": (any,),
+                "input_C": (any,),
+            },
+        }
+
+    RETURN_TYPES = (any,)
+    RETURN_NAMES = ("output",)
+
+    FUNCTION = "main"
+    CATEGORY = 'utils/switch'
+
+    def main(self, select_A, select_B, select_C, input_A=None, input_B=None, input_C=None):
+        """
+        Routes the selected input to the output.
+        """
+        if select_A > 0:
+            return (input_A,)
+        elif select_B > 0:
+            return (input_B,)
+        else:
+            return (input_C,)
+
 NODE_CLASS_MAPPINGS = {
     "mxSlider": mxSlider,
     "mxSlider2D": mxSlider2D,
@@ -279,7 +355,9 @@ NODE_CLASS_MAPPINGS = {
     "mxCFGGuider": mxCFGGuider,
     "mxModelSamplingFloat": mxModelSamplingFloat,
     "mxInt3": mxInt3,
-    "mxString3": mxString3
+    "mxString3": mxString3,
+    "mxInputSwitch": mxInputSwitch,
+    "mxInputSwitch3": mxInputSwitch3
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -291,5 +369,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "mxCFGGuider": "CFG Guider",
     "mxModelSamplingFloat": "Model Sampling Float",
     "mxInt3": "Int 3",
-    "mxString3": "String 3"
+    "mxString3": "String 3",
+    "mxInputSwitch": "Input Switch",
+    "mxInputSwitch3": "Input Switch 3"
 }

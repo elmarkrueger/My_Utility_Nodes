@@ -80,6 +80,12 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 | **Int 3** (`mxInt3`) | `utils/multiInteger` | Three independent integer inputs |
 | **String 3** (`mxString3`) | `utils/multiString` | Three independent string inputs |
 
+### Utility Nodes
+
+| Node | Category | Description |
+|------|----------|-------------|
+| **Input Switch** (`mxInputSwitch`) | `utils/switch` | Switches between two Any-type inputs with visual toggles |
+
 ### Image Processing
 
 | Node | Category | Description |
@@ -260,6 +266,43 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 
 ---
 
+### 🔀 mxInputSwitch
+
+**Purpose:** Route one of two Any-type inputs to output using visual boolean switches
+
+**Inputs:**
+- `input_A` (ANY): First input (can be any ComfyUI data type)
+- `input_B` (ANY): Second input (can be any ComfyUI data type)
+- `select_A` (INT): Boolean switch for input A (0 or 1)
+- `select_B` (INT): Boolean switch for input B (0 or 1)
+
+**Outputs:**
+- `output` (ANY): The selected input (A or B)
+
+**Features:**
+- Visual toggle switches with ON/OFF indicators
+- Only one input can be active at a time
+- Clicking a toggle automatically deactivates the other
+- Customizable labels for both inputs (double-click on label)
+- Green ON state, gray OFF state for clear visual feedback
+- Works with any ComfyUI data type (images, latents, models, etc.)
+
+**Use Cases:**
+- A/B testing different models or settings
+- Conditional routing in workflows
+- Quick switching between different image processing paths
+- Toggle between different prompts, LoRAs, or samplers
+- Create dynamic workflows with alternative branches
+
+**Usage:**
+1. Connect two inputs of any type to `input_A` and `input_B`
+2. Click one of the toggle switches to select which input to route
+3. The active input will have a green "ON" indicator
+4. Double-click on labels to rename them for better organization
+5. The selected input is passed through to the output
+
+---
+
 ## Technical Architecture
 
 ### File Structure
@@ -276,7 +319,8 @@ My_Utility_Nodes/
 │   ├── MultiSlider.js       # Multi-value slider widget (5 sliders)
 │   ├── MultiSlider4.js      # Multi-value slider widget (4 sliders)
 │   ├── Int3.js              # Integer input widget
-│   └── String3.js           # String input widget
+│   ├── String3.js           # String input widget
+│   └── InputSwitch.js       # Input switch toggle widget
 └── README.md
 ```
 
@@ -347,6 +391,28 @@ Control four different LoRA weights simultaneously with precision sliders and cu
 
 ---
 
+### Example 6: Conditional Model Selection
+
+```
+[Load Checkpoint A] ──┐
+                       ├── [Input Switch] → [KSampler]
+[Load Checkpoint B] ──┘
+```
+
+Switch between two different models with a single toggle. Use custom labels like "SD 1.5" and "SDXL" for clarity.
+
+### Example 7: Image Path Selection
+
+```
+[Load Image 1] ──┐
+                  ├── [Input Switch] → [Image Processing]
+[Load Image 2] ──┘
+```
+
+Compare different source images by toggling between them without rewiring connections.
+
+---
+
 ## License
 
 This project is released under the MIT License (or as specified by the author).
@@ -374,6 +440,12 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v1.3.0 (2025)
+- Added **Input Switch** (`mxInputSwitch`) node for routing between two Any-type inputs
+- Visual toggle switches with automatic mutual exclusion
+- Customizable input labels for better workflow organization
+- Supports all ComfyUI data types (images, models, latents, etc.)
 
 ### v1.2.0 (2025)
 - Added **Model Sampling Float** (`mxModelSamplingFloat`) node for advanced sampling control
