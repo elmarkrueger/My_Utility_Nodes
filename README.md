@@ -92,6 +92,12 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 |------|----------|-------------|
 | **RGBA zu RGB (Verlustfrei)** | `Bildverarbeitung/Konvertierung` | Lossless RGBA to RGB conversion |
 
+### File I/O
+
+| Node | Category | Description |
+|------|----------|-------------|
+| **Bild mit Sidecar TXT speichern** (`SaveImageWithSidecarTxt`) | `Custom_Research/IO` | Saves images with a synchronized text file containing metadata |
+
 ---
 
 ## Node Details
@@ -303,6 +309,40 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 
 ---
 
+### 💾 SaveImageWithSidecarTxt
+
+**Purpose:** Saves images to disk while generating a matching text file containing detailed generation metadata.
+
+**Inputs:**
+- `images` (IMAGE): The image batch to save
+- `filename_prefix` (STRING): Prefix for filenames (default: "ComfyUI")
+- `file_format` (COMBO): Output format selection (PNG, JPG, JPEG, WEBP)
+- `output_path` (STRING): Optional custom output directory (absolute path)
+- `positive_prompt` (STRING): Positive prompt text (ForceInput)
+- `negative_prompt` (STRING): Negative prompt text (ForceInput)
+- `model_name` (STRING): Name of the diffusion model (ForceInput)
+- `clip_name` (STRING): Name of the CLIP model (ForceInput)
+- `vae_name` (STRING): Name of the VAE model (ForceInput)
+- `sampler_details` (STRING): Details about sampling steps/cfg (ForceInput)
+
+**Outputs:**
+- None (Output Node)
+
+**Features:**
+- **Sidecar Text File**: Automatically creates a `.txt` file with the same basename as the image.
+- **Metadata Logging**: The text file includes prompts, model names, and sampling details.
+- **Format Support**: Supports PNG (with metadata), JPG/JPEG (high quality), and WEBP.
+- **Custom Paths**: Allows saving to a specific folder outside the default ComfyUI output directory.
+- **Alpha Handling**: Automatically converts RGBA to RGB for JPEG format.
+
+**Text File Content:**
+- Filename & Path
+- Model Details (Diffusion, Clip, VAE)
+- Positive & Negative Prompts
+- Sampling Process (Seeds & Steps)
+
+---
+
 ## Technical Architecture
 
 ### File Structure
@@ -411,6 +451,14 @@ Switch between two different models with a single toggle. Use custom labels like
 
 Compare different source images by toggling between them without rewiring connections.
 
+### Example 8: Saving with Metadata
+
+```
+[KSampler] → [SaveImageWithSidecarTxt]
+```
+
+Connect your image and all metadata strings (prompts, model names) to generate an image file and a corresponding text file with all generation parameters.
+
 ---
 
 ## License
@@ -440,6 +488,11 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v1.4.0 (2025)
+- Added **SaveImageWithSidecarTxt** node for saving images with detailed metadata text files
+- Supports PNG, JPG, JPEG, and WEBP formats
+- Custom output path support
 
 ### v1.3.0 (2025)
 - Added **Input Switch** (`mxInputSwitch`) node for routing between two Any-type inputs
