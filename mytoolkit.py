@@ -1,13 +1,212 @@
 # ComfyUI - mytoolkit - Elmar Krüger - 2025
+import json
+import os
+
+import folder_paths
 import nodes
+import numpy as np
 import torch
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 
 class AnyType(str):
     def __ne__(self, __value: object) -> bool:
         return False
 
+
 any = AnyType("*")
+
+
+class SaveImageWithSidecarTxt:
+    """
+    Eine Custom Node für ComfyUI, die Bilder speichert und simultan eine
+    detaillierte Textdatei mit identischem Dateinamen erzeugt.
+    Features:
+    - Benutzerdefinierter Ausgabepfad
+    - Formatwahl (PNG, JPG, JPEG, WEBP)
+    - Synchronisierte Metadaten-Datei (.txt)
+    """
+
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+        self.type = "output"
+        self.prefix_append = ""
+        self.compress_level = 4
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "filename_prefix": ("STRING", {"default": "ComfyUI"}),
+                # Neues Dropdown für Dateiformate
+                "file_format": (["PNG", "JPG", "JPEG", "WEBP"], {"default": "PNG"}),
+            },
+            "optional": {
+                "output_path": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "placeholder": "C:\\Mein\\Pfad (optional)",
+                    },
+                ),
+                # ForceInput erzwingt, dass diese Werte von anderen Nodes kommen
+                "positive_prompt": (
+                    "STRING",
+                    {"forceInput": True, "multiline": True, "default": ""},
+                ),
+                "negative_prompt": (
+                    "STRING",
+                    {"forceInput": True, "multiline": True, "default": ""},
+                ),
+                "model_name": (
+                    "STRING",
+                    {"forceInput": True, "default": "Unknown Model"},
+                ),
+                "clip_name": (
+                    "STRING",
+                    {"forceInput": True, "default": "Unknown CLIP"},
+                ),
+                "vae_name": ("STRING", {"forceInput": True, "default": "Unknown VAE"}),
+                "sampler_details": (
+                    "STRING",
+                    {"forceInput": True, "multiline": True, "default": ""},
+                ),
+            },
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_images_and_text"
+    OUTPUT_NODE = True
+    CATEGORY = "Custom_Research/IO"
+
+    def save_images_and_text(
+        self,
+        images,
+        filename_prefix="ComfyUI",
+        file_format="PNG",
+        output_path="",
+        positive_prompt="",
+        negative_prompt="",
+        model_name="Unknown Model",
+        clip_name="Unknown CLIP",
+        vae_name="Unknown VAE",
+        sampler_details="",
+        prompt=None,
+        extra_pnginfo=None,
+    ):
+
+        # 1. Bestimmen des Basis-Ausgabeverzeichnisses
+        if output_path and output_path.strip():
+            base_output_dir = output_path.strip()
+            try:
+                if not os.path.exists(base_output_dir):
+                    os.makedirs(base_output_dir, exist_ok=True)
+            except Exception as e:
+                print(f"Fehler beim Erstellen des Ordners '{base_output_dir}': {e}")
+                base_output_dir = self.output_dir
+        else:
+            base_output_dir = self.output_dir
+
+        # 2. Zugriff auf die zentrale Pfad-Logik von ComfyUI
+        full_output_folder, filename, counter, subfolder, filename_prefix = (
+            folder_paths.get_save_image_path(
+                filename_prefix, base_output_dir, images.shape[2], images.shape[1]
+            )
+        )
+
+        results = list()
+
+        # Dateiendung normalisieren
+        extension = file_format.lower()
+        if extension == "jpeg":
+            extension = "jpg"  # Übliche Endung vereinheitlichen (oder 'jpeg' lassen, wenn gewünscht)
+
+        for image in images:
+            # 3. Bildverarbeitung (Tensor -> PIL Image)
+            i = 255.0 * image.cpu().numpy()
+            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+
+            # Format-spezifische Anpassungen
+            if file_format in ["JPG", "JPEG"]:
+                # JPEG unterstützt kein Alpha (Transparenz), daher Konvertierung zu RGB notwendig
+                if img.mode == "RGBA":
+                    img = img.convert("RGB")
+
+            # 4. Metadaten für das Bild selbst (nur relevant für PNG/WEBP/JPEG-Exif)
+            metadata = None
+            if file_format == "PNG" and not False:
+                metadata = PngInfo()
+                if prompt is not None:
+                    metadata.add_text("prompt", json.dumps(prompt))
+                if extra_pnginfo is not None:
+                    for x in extra_pnginfo:
+                        metadata.add_text(x, json.dumps(extra_pnginfo[x]))
+
+            # 5. Dateinamen generieren (Atomare Benennung)
+            file_base = f"{filename}_{counter:05}_"
+            file_img = f"{file_base}.{extension}"
+            file_txt = f"{file_base}.txt"
+
+            image_path = os.path.join(full_output_folder, file_img)
+            txt_path = os.path.join(full_output_folder, file_txt)
+
+            # 6. Bild speichern
+            if file_format == "PNG":
+                img.save(
+                    image_path, pnginfo=metadata, compress_level=self.compress_level
+                )
+            elif file_format in ["JPG", "JPEG"]:
+                img.save(image_path, quality=95)  # Hohe Qualität für JPG
+            elif file_format == "WEBP":
+                img.save(image_path, quality=95, lossless=False)
+
+            # 7. Inhalt der Textdatei formatieren
+            txt_content = f"""FILENAME INFORMATION
+Filename: {file_img}
+Filepath: {image_path}
+Format:   {file_format}
+
+==================================================
+MODEL DETAILS
+==================================================
+Diffusion Model: {model_name}
+Clip Model:      {clip_name}
+VAE Model:       {vae_name}
+
+==================================================
+PROMPTS
+==================================================
+[Positive Prompt]
+{positive_prompt}
+
+[Negative Prompt]
+{negative_prompt}
+
+==================================================
+SAMPLING PROCESS (Seeds & Steps)
+==================================================
+{sampler_details}
+"""
+
+            # 8. Textdatei schreiben
+            try:
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write(txt_content)
+            except Exception as e:
+                print(f"Error writing sidecar text file: {e}")
+
+            results.append(
+                {"filename": file_img, "subfolder": subfolder, "type": self.type}
+            )
+
+            counter += 1
+
+        return {"ui": {"images": results}}
+
 
 class mxSlider:
     @classmethod
@@ -24,7 +223,7 @@ class mxSlider:
     RETURN_NAMES = ("X",)
 
     FUNCTION = "main"
-    CATEGORY = 'utils/slider'
+    CATEGORY = "utils/slider"
 
     def main(self, Xi, Xf, isfloatX):
         if isfloatX > 0:
@@ -33,25 +232,38 @@ class mxSlider:
             out = Xi
         return (out,)
 
+
 class mxSlider2D:
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "Xi": ("INT", {"default": 512, "min": -4294967296, "max": 4294967296}),
-                "Xf": ("FLOAT", {"default": 512, "min": -4294967296, "max": 4294967296}),
+                "Xf": (
+                    "FLOAT",
+                    {"default": 512, "min": -4294967296, "max": 4294967296},
+                ),
                 "Yi": ("INT", {"default": 512, "min": -4294967296, "max": 4294967296}),
-                "Yf": ("FLOAT", {"default": 512, "min": -4294967296, "max": 4294967296}),
+                "Yf": (
+                    "FLOAT",
+                    {"default": 512, "min": -4294967296, "max": 4294967296},
+                ),
                 "isfloatX": ("INT", {"default": 0, "min": 0, "max": 1}),
                 "isfloatY": ("INT", {"default": 0, "min": 0, "max": 1}),
             },
         }
 
-    RETURN_TYPES = (any, any,)
-    RETURN_NAMES = ("X","Y",)
+    RETURN_TYPES = (
+        any,
+        any,
+    )
+    RETURN_NAMES = (
+        "X",
+        "Y",
+    )
 
     FUNCTION = "main"
-    CATEGORY = 'utils/slider'
+    CATEGORY = "utils/slider"
 
     def main(self, Xi, Xf, isfloatX, Yi, Yf, isfloatY):
         if isfloatX > 0:
@@ -62,7 +274,10 @@ class mxSlider2D:
             outY = Yf
         else:
             outY = Yi
-        return (outX, outY,)
+        return (
+            outX,
+            outY,
+        )
 
 
 class mxFloat5:
@@ -82,20 +297,39 @@ class mxFloat5:
     RETURN_NAMES = ("F1", "F2", "F3", "F4", "F5")
 
     FUNCTION = "main"
-    CATEGORY = 'utils/slider'
+    CATEGORY = "utils/slider"
 
     def main(self, F1, F2, F3, F4, F5):
-        return (F1, F2, F3, F4, F5,)
+        return (
+            F1,
+            F2,
+            F3,
+            F4,
+            F5,
+        )
+
 
 class mxFloat4:
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "F1": ("FLOAT", {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01}),
-                "F2": ("FLOAT", {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01}),
-                "F3": ("FLOAT", {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01}),
-                "F4": ("FLOAT", {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01}),
+                "F1": (
+                    "FLOAT",
+                    {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01},
+                ),
+                "F2": (
+                    "FLOAT",
+                    {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01},
+                ),
+                "F3": (
+                    "FLOAT",
+                    {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01},
+                ),
+                "F4": (
+                    "FLOAT",
+                    {"default": 0.00, "min": 0.00, "max": 1.00, "step": 0.01},
+                ),
             },
         }
 
@@ -103,10 +337,16 @@ class mxFloat4:
     RETURN_NAMES = ("F1", "F2", "F3", "F4")
 
     FUNCTION = "main"
-    CATEGORY = 'utils/slider'
+    CATEGORY = "utils/slider"
 
     def main(self, F1, F2, F3, F4):
-        return (F1, F2, F3, F4,)
+        return (
+            F1,
+            F2,
+            F3,
+            F4,
+        )
+
 
 class RGBA_to_RGB_Lossless:
     """
@@ -166,7 +406,7 @@ class RGBA_to_RGB_Lossless:
         if channels == 4:
             # HAUPTFALL: RGBA Input
             # Wir nutzen Python Slicing (View-Operation).
-            #... (Ellipsis) steht für "alle vorherigen Dimensionen" (hier B, H, W).
+            # ... (Ellipsis) steht für "alle vorherigen Dimensionen" (hier B, H, W).
             # :3 bedeutet "nimm die Indizes 0, 1, 2" (also R, G, B).
             # Der Alpha-Kanal (Index 3) wird ignoriert.
             rgb_image = image[..., :3]
@@ -183,7 +423,7 @@ class RGBA_to_RGB_Lossless:
         elif channels == 1:
             # SONDERFALL: Graustufen (Grayscale)
             # Manche Masken kommen als 1-Kanal Bilder.
-            #.repeat(1, 1, 1, 3) repliziert den Kanal 3x, um RGB zu simulieren.
+            # .repeat(1, 1, 1, 3) repliziert den Kanal 3x, um RGB zu simulieren.
             # Dimensionen: Batch(1) * Height(1) * Width(1) * Channels(3)
             rgb_image = image.repeat(1, 1, 1, 3)
             return (rgb_image,)
@@ -191,15 +431,21 @@ class RGBA_to_RGB_Lossless:
         else:
             # FEHLERFALL: Unbekannte Kanalanzahl (z.B. 2 oder >4)
             # Wir geben das Original zurück, könnten hier aber auch einen Error raisen.
-            print(f"Warnung: RGBA_to_RGB_Lossless erhielt Bild mit {channels} Kanälen. Keine Konvertierung möglich.")
+            print(
+                f"Warnung: RGBA_to_RGB_Lossless erhielt Bild mit {channels} Kanälen. Keine Konvertierung möglich."
+            )
             return (image,)
+
 
 class mxCFGGuider:
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "cfg": ("FLOAT", {"default": 7.0, "min": 0.0, "max": 100.0, "step": 0.1}),
+                "cfg": (
+                    "FLOAT",
+                    {"default": 7.0, "min": 0.0, "max": 100.0, "step": 0.1},
+                ),
             },
         }
 
@@ -207,17 +453,21 @@ class mxCFGGuider:
     RETURN_NAMES = ("FLOAT",)
 
     FUNCTION = "main"
-    CATEGORY = 'utils/slider'
+    CATEGORY = "utils/slider"
 
     def main(self, cfg):
         return (cfg,)
+
 
 class mxModelSamplingFloat:
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "value": ("FLOAT", {"default": 1.00, "min": 0.00, "max": 15.00, "step": 0.01}),
+                "value": (
+                    "FLOAT",
+                    {"default": 1.00, "min": 0.00, "max": 15.00, "step": 0.01},
+                ),
             },
         }
 
@@ -225,10 +475,11 @@ class mxModelSamplingFloat:
     RETURN_NAMES = ("value",)
 
     FUNCTION = "main"
-    CATEGORY = 'utils/slider'
+    CATEGORY = "utils/slider"
 
     def main(self, value):
         return (value,)
+
 
 class mxInt3:
     @classmethod
@@ -245,10 +496,15 @@ class mxInt3:
     RETURN_NAMES = ("I1", "I2", "I3")
 
     FUNCTION = "main"
-    CATEGORY = 'utils/multiInteger'
+    CATEGORY = "utils/multiInteger"
 
     def main(self, I1, I2, I3):
-        return (I1, I2, I3,)
+        return (
+            I1,
+            I2,
+            I3,
+        )
+
 
 class mxString3:
     @classmethod
@@ -265,10 +521,15 @@ class mxString3:
     RETURN_NAMES = ("S1", "S2", "S3")
 
     FUNCTION = "main"
-    CATEGORY = 'utils/multiString'
+    CATEGORY = "utils/multiString"
 
     def main(self, S1, S2, S3):
-        return (S1, S2, S3,)
+        return (
+            S1,
+            S2,
+            S3,
+        )
+
 
 class mxInputSwitch:
     """
@@ -294,7 +555,7 @@ class mxInputSwitch:
     RETURN_NAMES = ("output",)
 
     FUNCTION = "main"
-    CATEGORY = 'utils/switch'
+    CATEGORY = "utils/switch"
 
     def main(self, select_A, select_B, input_A=None, input_B=None):
         """
@@ -306,6 +567,7 @@ class mxInputSwitch:
             return (input_A,)
         else:
             return (input_B,)
+
 
 class mxInputSwitch3:
     """
@@ -333,9 +595,11 @@ class mxInputSwitch3:
     RETURN_NAMES = ("output",)
 
     FUNCTION = "main"
-    CATEGORY = 'utils/switch'
+    CATEGORY = "utils/switch"
 
-    def main(self, select_A, select_B, select_C, input_A=None, input_B=None, input_C=None):
+    def main(
+        self, select_A, select_B, select_C, input_A=None, input_B=None, input_C=None
+    ):
         """
         Routes the selected input to the output.
         """
@@ -345,6 +609,7 @@ class mxInputSwitch3:
             return (input_B,)
         else:
             return (input_C,)
+
 
 NODE_CLASS_MAPPINGS = {
     "mxSlider": mxSlider,
@@ -357,7 +622,8 @@ NODE_CLASS_MAPPINGS = {
     "mxInt3": mxInt3,
     "mxString3": mxString3,
     "mxInputSwitch": mxInputSwitch,
-    "mxInputSwitch3": mxInputSwitch3
+    "mxInputSwitch3": mxInputSwitch3,
+    "SaveImageWithSidecarTxt": SaveImageWithSidecarTxt,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -371,5 +637,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "mxInt3": "Int 3",
     "mxString3": "String 3",
     "mxInputSwitch": "Input Switch",
-    "mxInputSwitch3": "Input Switch 3"
+    "mxInputSwitch3": "Input Switch 3",
+    "SaveImageWithSidecarTxt": "Bild mit Sidecar TXT speichern",
 }
