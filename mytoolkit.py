@@ -18,6 +18,133 @@ class AnyType(str):
 any = AnyType("*")
 
 
+class SpecialAnyType(str):
+    """
+    Eine spezielle Klasse, die bei jedem Vergleich 'True' zurückgibt.
+    Dies überlistet das Validierungssystem von ComfyUI und ermöglicht
+    Verbindungen zwischen eigentlich inkompatiblen Typen.
+    """
+
+    def __ne__(self, __value: object) -> bool:
+        return False
+
+    def __eq__(self, __value: object) -> bool:
+        return True
+
+
+# Instanziierung des Wildcards für die Verwendung in INPUT_TYPES
+ANY = SpecialAnyType("*")
+
+
+class BatchLogicSwitch:
+    """
+    Eine Logik-Weiche, die einen Batch von Generationen in gleich große Gruppen aufteilt
+    und jeder Gruppe unterschiedliche Parameter (A, B, C) zuweist.
+
+    Ersetzt den komplexen Subgraphen aus IntDiv, IntMul und IfElif Nodes.
+    """
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        """
+        Definiert die Eingabeparameter der Node.
+        'required': Zwingend notwendige Inputs/Widgets.
+        'optional': Optionale Inputs, die auch 'None' sein können.
+        """
+        return {
+            "required": {
+                # Der steuernde Signalgeber (z.B. aktueller Seed oder Batch-Index)
+                # Wir definieren min/max Grenzen, um Überläufe zu verhindern.
+                "batch_index": (
+                    "INT",
+                    {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF},
+                ),
+                # Konfiguration der Aufteilung
+                "total_batch_size": ("INT", {"default": 12, "min": 1}),
+                "num_groups": ("INT", {"default": 3, "min": 1}),
+            },
+            "optional": {
+                # Universelle Inputs - können Modelle, Prompts, Latents etc. sein.
+                # Durch die Verwendung von 'ANY' akzeptiert das UI jede Verbindung.
+                "input_A": (ANY,),
+                "input_B": (ANY,),
+                "input_C": (ANY,),
+                # Optionale Erweiterung für Robustheit (falls num_groups > 3 gewählt wird)
+                "fallback_input": (ANY,),
+            },
+        }
+
+    # Der Output ist ebenfalls vom Typ "Any", nimmt also die Form des durchgeschleusten Objekts an.
+    RETURN_TYPES = (ANY,)
+    RETURN_NAMES = ("selected_context",)
+
+    FUNCTION = "switch_logic"
+
+    # Kategorie im Rechtsklick-Menü
+    CATEGORY = "MyUtilityNodes/Logic"
+
+    def switch_logic(
+        self,
+        batch_index,
+        total_batch_size,
+        num_groups,
+        input_A=None,
+        input_B=None,
+        input_C=None,
+        fallback_input=None,
+    ):
+        """
+        Führt die Schaltlogik aus.
+        """
+
+        # 1. Sicherheitsprüfung: Division durch Null verhindern
+        if num_groups <= 0:
+            num_groups = 1
+
+        # 2. Berechnung der Gruppengröße
+        # Beispiel: 12 gesamt / 3 Gruppen = 4 Bilder pro Gruppe.
+        # Wir nutzen Ganzzahldivision (//).
+        group_size = total_batch_size // num_groups
+
+        # Sicherheit: Falls die Gruppengröße 0 wäre (z.B. Batch 2, Gruppen 5), setzen wir sie auf 1.
+        if group_size < 1:
+            group_size = 1
+
+        # 3. Bestimmung der aktuellen Gruppe
+        # Index 0,1,2,3 // 4 = 0 (Gruppe A)
+        # Index 4,5,6,7 // 4 = 1 (Gruppe B)
+        # Index 8,9,10,11 // 4 = 2 (Gruppe C)
+        current_group_idx = batch_index // group_size
+
+        # 4. Routing des Inputs basierend auf dem Gruppenindex
+        # Standardwert ist der Fallback oder None, falls nichts passt.
+        selected_value = fallback_input
+
+        if current_group_idx == 0:
+            selected_value = input_A
+        elif current_group_idx == 1:
+            selected_value = input_B
+        elif current_group_idx == 2:
+            selected_value = input_C
+        else:
+            # Behandlung von Indizes außerhalb des erwarteten Bereichs (z.B. Index 12+)
+            # Logik: Wenn kein expliziter Fallback definiert ist, nutzen wir den letzten
+            # definierten Input (C), um Abstürze zu vermeiden ("Clamping").
+            if fallback_input is None:
+                selected_value = input_C
+            else:
+                selected_value = fallback_input
+
+        # Debugging-Ausgabe in der Konsole (hilfreich bei der Ersteinrichtung)
+        # print(f"BatchSwitch Debug: Index {batch_index} -> Gruppe {current_group_idx} -> Wähle Input")
+
+        # Rückgabe muss immer ein Tupel sein, auch bei einem einzelnen Wert!
+        return (selected_value,)
+
+
 # --------------------------------------------------------------------------------
 # Node 2: V2 Version (Separate Inputs für 3 Sampler Passes)
 # --------------------------------------------------------------------------------
@@ -31,30 +158,46 @@ class SaveImageWithSidecarTxt_V2:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "images": ("IMAGE", ),
+                "images": ("IMAGE",),
                 "filename_prefix": ("STRING", {"default": "ComfyUI"}),
                 "file_format": (["PNG", "JPG", "JPEG", "WEBP"], {"default": "PNG"}),
             },
             "optional": {
-                "output_path": ("STRING", {"default": "", "multiline": False, "placeholder": "C:\\Mein\\Pfad (optional)"}),
-                "positive_prompt": ("STRING", {"forceInput": True, "multiline": True, "default": ""}),
-                "negative_prompt": ("STRING", {"forceInput": True, "multiline": True, "default": ""}),
-                "model_name": ("STRING", {"forceInput": True, "default": "Unknown Model"}),
-                "clip_name": ("STRING", {"forceInput": True, "default": "Unknown CLIP"}),
+                "output_path": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "placeholder": "C:\\Mein\\Pfad (optional)",
+                    },
+                ),
+                "positive_prompt": (
+                    "STRING",
+                    {"forceInput": True, "multiline": True, "default": ""},
+                ),
+                "negative_prompt": (
+                    "STRING",
+                    {"forceInput": True, "multiline": True, "default": ""},
+                ),
+                "model_name": (
+                    "STRING",
+                    {"forceInput": True, "default": "Unknown Model"},
+                ),
+                "clip_name": (
+                    "STRING",
+                    {"forceInput": True, "default": "Unknown CLIP"},
+                ),
                 "vae_name": ("STRING", {"forceInput": True, "default": "Unknown VAE"}),
-                
                 # --- Pass 1 ---
                 "p1_sampler": ("STRING", {"forceInput": True}),
                 "p1_scheduler": ("STRING", {"forceInput": True}),
                 "p1_steps": ("INT", {"forceInput": True}),
                 "p1_seed": ("INT", {"forceInput": True}),
-                
                 # --- Pass 2 ---
                 "p2_sampler": ("STRING", {"forceInput": True}),
                 "p2_scheduler": ("STRING", {"forceInput": True}),
                 "p2_steps": ("INT", {"forceInput": True}),
                 "p2_seed": ("INT", {"forceInput": True}),
-                
                 # --- Pass 3 ---
                 "p3_sampler": ("STRING", {"forceInput": True}),
                 "p3_scheduler": ("STRING", {"forceInput": True}),
@@ -69,39 +212,66 @@ class SaveImageWithSidecarTxt_V2:
     OUTPUT_NODE = True
     CATEGORY = "Custom_Research/IO"
 
-    def save_images_and_text_v2(self, images, filename_prefix="ComfyUI", file_format="PNG", output_path="",
-                                positive_prompt="", negative_prompt="", 
-                                model_name="Unknown Model", clip_name="Unknown CLIP", vae_name="Unknown VAE",
-                                p1_sampler=None, p1_scheduler=None, p1_steps=None, p1_seed=None,
-                                p2_sampler=None, p2_scheduler=None, p2_steps=None, p2_seed=None,
-                                p3_sampler=None, p3_scheduler=None, p3_steps=None, p3_seed=None,
-                                prompt=None, extra_pnginfo=None):
-        
+    def save_images_and_text_v2(
+        self,
+        images,
+        filename_prefix="ComfyUI",
+        file_format="PNG",
+        output_path="",
+        positive_prompt="",
+        negative_prompt="",
+        model_name="Unknown Model",
+        clip_name="Unknown CLIP",
+        vae_name="Unknown VAE",
+        p1_sampler=None,
+        p1_scheduler=None,
+        p1_steps=None,
+        p1_seed=None,
+        p2_sampler=None,
+        p2_scheduler=None,
+        p2_steps=None,
+        p2_seed=None,
+        p3_sampler=None,
+        p3_scheduler=None,
+        p3_steps=None,
+        p3_seed=None,
+        prompt=None,
+        extra_pnginfo=None,
+    ):
+
         # 1. Pfad-Logik (identisch zu V1)
         if output_path and output_path.strip():
             base_output_dir = output_path.strip()
             try:
-                if not os.path.exists(base_output_dir): os.makedirs(base_output_dir, exist_ok=True)
-            except: base_output_dir = self.output_dir
+                if not os.path.exists(base_output_dir):
+                    os.makedirs(base_output_dir, exist_ok=True)
+            except:
+                base_output_dir = self.output_dir
         else:
             base_output_dir = self.output_dir
 
-        full_output_folder, filename, counter, subfolder, filename_prefix = \
-            folder_paths.get_save_image_path(filename_prefix, base_output_dir, images.shape[2], images.shape[1])
-        
+        full_output_folder, filename, counter, subfolder, filename_prefix = (
+            folder_paths.get_save_image_path(
+                filename_prefix, base_output_dir, images.shape[2], images.shape[1]
+            )
+        )
+
         extension = file_format.lower()
-        if extension == "jpeg": extension = "jpg"
+        if extension == "jpeg":
+            extension = "jpg"
 
         # 2. Sampler String Konstruktion (Das Herzstück von V2)
         sampler_lines = []
-        
+
         # Pass 1
         if p1_sampler or p1_steps:
             s_name = p1_sampler if p1_sampler else "N/A"
             sched = p1_scheduler if p1_scheduler else "N/A"
             st = p1_steps if p1_steps is not None else "N/A"
             sd = p1_seed if p1_seed is not None else "N/A"
-            sampler_lines.append(f"First Sampler: --> {s_name}, First Scheduler: --> {sched}, Steps first Sampler: --> {st}, Seed first Sampler: --> {sd}")
+            sampler_lines.append(
+                f"First Sampler: --> {s_name}, First Scheduler: --> {sched}, Steps first Sampler: --> {st}, Seed first Sampler: --> {sd}"
+            )
 
         # Pass 2
         if p2_sampler or p2_steps:
@@ -109,7 +279,9 @@ class SaveImageWithSidecarTxt_V2:
             sched = p2_scheduler if p2_scheduler else "N/A"
             st = p2_steps if p2_steps is not None else "N/A"
             sd = p2_seed if p2_seed is not None else "N/A"
-            sampler_lines.append(f"Second Sampler: --> {s_name}, Second Scheduler: --> {sched}, Steps second Sampler: --> {st}, Seed second Sampler: --> {sd}")
+            sampler_lines.append(
+                f"Second Sampler: --> {s_name}, Second Scheduler: --> {sched}, Steps second Sampler: --> {st}, Seed second Sampler: --> {sd}"
+            )
 
         # Pass 3
         if p3_sampler or p3_steps:
@@ -117,34 +289,44 @@ class SaveImageWithSidecarTxt_V2:
             sched = p3_scheduler if p3_scheduler else "N/A"
             st = p3_steps if p3_steps is not None else "N/A"
             sd = p3_seed if p3_seed is not None else "N/A"
-            sampler_lines.append(f"Third Sampler: --> {s_name}, Third Scheduler: --> {sched}, Steps third Sampler: --> {st}, Seed third Sampler: --> {sd}")
+            sampler_lines.append(
+                f"Third Sampler: --> {s_name}, Third Scheduler: --> {sched}, Steps third Sampler: --> {st}, Seed third Sampler: --> {sd}"
+            )
 
         formatted_sampler_details = "\n".join(sampler_lines)
 
         results = list()
         for image in images:
             # Bild speichern (identisch zu V1)
-            i = 255. * image.cpu().numpy()
+            i = 255.0 * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-            if file_format in ["JPG", "JPEG"] and img.mode == 'RGBA': img = img.convert('RGB')
-            
+            if file_format in ["JPG", "JPEG"] and img.mode == "RGBA":
+                img = img.convert("RGB")
+
             metadata = None
             if file_format == "PNG":
                 metadata = PngInfo()
-                if prompt is not None: metadata.add_text("prompt", json.dumps(prompt))
-                if extra_pnginfo is not None: 
-                    for x in extra_pnginfo: metadata.add_text(x, json.dumps(extra_pnginfo[x]))
+                if prompt is not None:
+                    metadata.add_text("prompt", json.dumps(prompt))
+                if extra_pnginfo is not None:
+                    for x in extra_pnginfo:
+                        metadata.add_text(x, json.dumps(extra_pnginfo[x]))
 
             file_base = f"{filename}_{counter:05}_"
             file_img = f"{file_base}.{extension}"
             file_txt = f"{file_base}.txt"
-            
+
             image_path = os.path.join(full_output_folder, file_img)
             txt_path = os.path.join(full_output_folder, file_txt)
-            
-            if file_format == "PNG": img.save(image_path, pnginfo=metadata, compress_level=self.compress_level)
-            elif file_format in ["JPG", "JPEG"]: img.save(image_path, quality=95)
-            elif file_format == "WEBP": img.save(image_path, quality=95, lossless=False)
+
+            if file_format == "PNG":
+                img.save(
+                    image_path, pnginfo=metadata, compress_level=self.compress_level
+                )
+            elif file_format in ["JPG", "JPEG"]:
+                img.save(image_path, quality=95)
+            elif file_format == "WEBP":
+                img.save(image_path, quality=95, lossless=False)
 
             # Text speichern
             txt_content = f"""FILENAME INFORMATION
@@ -174,10 +356,14 @@ SAMPLING PROCESS (Seeds & Steps)
 {formatted_sampler_details}
 """
             try:
-                with open(txt_path, "w", encoding="utf-8") as f: f.write(txt_content)
-            except Exception as e: print(f"Error: {e}")
-                
-            results.append({"filename": file_img, "subfolder": subfolder, "type": self.type})
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write(txt_content)
+            except Exception as e:
+                print(f"Error: {e}")
+
+            results.append(
+                {"filename": file_img, "subfolder": subfolder, "type": self.type}
+            )
             counter += 1
 
         return {"ui": {"images": results}}
@@ -599,6 +785,7 @@ NODE_CLASS_MAPPINGS = {
     "mxInputSwitch": mxInputSwitch,
     "mxInputSwitch3": mxInputSwitch3,
     "SaveImageWithSidecarTxt_V2": SaveImageWithSidecarTxt_V2,
+    "BatchLogicSwitch": BatchLogicSwitch,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -614,4 +801,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "mxInputSwitch": "Input Switch",
     "mxInputSwitch3": "Input Switch 3",
     "SaveImageWithSidecarTxt_V2": "Bild mit Sidecar TXT speichern V2",
+    "BatchLogicSwitch": "Batch Logic Switch",
 }
