@@ -2,7 +2,7 @@
 
 A collection of custom utility nodes for ComfyUI, designed to streamline workflows with enhanced input controls, sliders, and image processing tools.
 
-**Author:** Elmar Krüger  
+**Author:** Elmar Krüger
 **Year:** 2025
 
 ---
@@ -85,6 +85,12 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 | Node | Category | Description |
 |------|----------|-------------|
 | **Input Switch** (`mxInputSwitch`) | `utils/switch` | Switches between two Any-type inputs with visual toggles |
+
+### Logic Nodes
+
+| Node | Category | Description |
+|------|----------|-------------|
+| **Batch Logic Switch** (`BatchLogicSwitch`) | `MyUtilityNodes/Logic` | Splits a batch into groups and assigns different parameters |
 
 ### Image Processing
 
@@ -195,7 +201,7 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 
 **Technical Implementation:**
 - Uses PyTorch tensor slicing (`image[..., :3]`) for zero-copy operation
-- Handles edge cases: 
+- Handles edge cases:
   - **4 channels (RGBA):** Strips alpha channel
   - **3 channels (RGB):** Pass-through
   - **1 channel (Grayscale):** Replicates to 3 channels
@@ -309,7 +315,35 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 
 ---
 
-### 💾 SaveImageWithSidecarTxt_V2
+### � BatchLogicSwitch
+
+**Purpose:** Divides a batch of generations into equal-sized groups and assigns different parameters (A, B, C) to each group. Replaces complex subgraphs of IntDiv, IntMul, and IfElif nodes.
+
+**Inputs:**
+- `batch_index` (INT): The controlling signal (e.g., current seed or batch index).
+- `total_batch_size` (INT): Total number of items in the batch (default: 12).
+- `num_groups` (INT): Number of groups to split the batch into (default: 3).
+- `input_A` (ANY): Parameter for the first group (Index 0).
+- `input_B` (ANY): Parameter for the second group (Index 1).
+- `input_C` (ANY): Parameter for the third group (Index 2).
+- `fallback_input` (ANY): Optional fallback value for indices outside the groups.
+
+**Outputs:**
+- `selected_context` (ANY): The selected input parameter based on the current batch index.
+
+**Logic:**
+1. Calculates `group_size = total_batch_size // num_groups`.
+2. Determines `current_group_idx = batch_index // group_size`.
+3. Routes the corresponding input (A, B, or C) to the output.
+
+**Use Cases:**
+- Applying different prompts or settings to different parts of a batch.
+- Creating variations within a single batch generation.
+- Simplifying complex logic structures in workflows.
+
+---
+
+### �💾 SaveImageWithSidecarTxt_V2
 
 **Purpose:** Saves images to disk while generating a matching text file containing detailed generation metadata, with support for up to 3 sampling passes.
 
@@ -461,6 +495,14 @@ Compare different source images by toggling between them without rewiring connec
 
 Connect your image and all metadata strings (prompts, model names, sampler details for up to 3 passes) to generate an image file and a corresponding text file with all generation parameters.
 
+### Example 9: Batch Parameter Variation
+
+```
+[Batch Index] → [BatchLogicSwitch] → [KSampler]
+```
+
+Split a batch of 12 images into 3 groups of 4. Assign different LoRAs or prompts to `input_A`, `input_B`, and `input_C`. The switch will automatically route the correct parameter based on the current image index.
+
 ---
 
 ## License
@@ -473,7 +515,7 @@ This project is released under the MIT License (or as specified by the author).
 
 ## Contributing
 
-Contributions, issues, and feature requests are welcome! 
+Contributions, issues, and feature requests are welcome!
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
@@ -490,6 +532,9 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v1.6.0 (2026)
+- Added **Batch Logic Switch** (`BatchLogicSwitch`) node for splitting batches and assigning different parameters to groups.
 
 ### v1.5.0 (2026)
 - Replaced **SaveImageWithSidecarTxt** with **SaveImageWithSidecarTxt_V2**
