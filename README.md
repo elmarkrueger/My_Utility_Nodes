@@ -96,7 +96,7 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 
 | Node | Category | Description |
 |------|----------|-------------|
-| **Bild mit Sidecar TXT speichern** (`SaveImageWithSidecarTxt`) | `Custom_Research/IO` | Saves images with a synchronized text file containing metadata |
+| **Bild mit Sidecar TXT speichern V2** (`SaveImageWithSidecarTxt_V2`) | `Custom_Research/IO` | Saves images with a synchronized text file containing metadata (supports 3-pass sampling details) |
 
 ---
 
@@ -309,9 +309,9 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 
 ---
 
-### 💾 SaveImageWithSidecarTxt
+### 💾 SaveImageWithSidecarTxt_V2
 
-**Purpose:** Saves images to disk while generating a matching text file containing detailed generation metadata.
+**Purpose:** Saves images to disk while generating a matching text file containing detailed generation metadata, with support for up to 3 sampling passes.
 
 **Inputs:**
 - `images` (IMAGE): The image batch to save
@@ -323,14 +323,16 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 - `model_name` (STRING): Name of the diffusion model (ForceInput)
 - `clip_name` (STRING): Name of the CLIP model (ForceInput)
 - `vae_name` (STRING): Name of the VAE model (ForceInput)
-- `sampler_details` (STRING): Details about sampling steps/cfg (ForceInput)
+- `p1_sampler`, `p1_scheduler`, `p1_steps`, `p1_seed`: Pass 1 sampling details (ForceInput)
+- `p2_sampler`, `p2_scheduler`, `p2_steps`, `p2_seed`: Pass 2 sampling details (ForceInput)
+- `p3_sampler`, `p3_scheduler`, `p3_steps`, `p3_seed`: Pass 3 sampling details (ForceInput)
 
 **Outputs:**
 - None (Output Node)
 
 **Features:**
 - **Sidecar Text File**: Automatically creates a `.txt` file with the same basename as the image.
-- **Metadata Logging**: The text file includes prompts, model names, and sampling details.
+- **Metadata Logging**: The text file includes prompts, model names, and detailed sampling info for up to 3 passes.
 - **Format Support**: Supports PNG (with metadata), JPG/JPEG (high quality), and WEBP.
 - **Custom Paths**: Allows saving to a specific folder outside the default ComfyUI output directory.
 - **Alpha Handling**: Automatically converts RGBA to RGB for JPEG format.
@@ -339,7 +341,7 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 - Filename & Path
 - Model Details (Diffusion, Clip, VAE)
 - Positive & Negative Prompts
-- Sampling Process (Seeds & Steps)
+- Sampling Process (Detailed info for each active sampler pass)
 
 ---
 
@@ -454,10 +456,10 @@ Compare different source images by toggling between them without rewiring connec
 ### Example 8: Saving with Metadata
 
 ```
-[KSampler] → [SaveImageWithSidecarTxt]
+[KSampler] → [SaveImageWithSidecarTxt_V2]
 ```
 
-Connect your image and all metadata strings (prompts, model names) to generate an image file and a corresponding text file with all generation parameters.
+Connect your image and all metadata strings (prompts, model names, sampler details for up to 3 passes) to generate an image file and a corresponding text file with all generation parameters.
 
 ---
 
@@ -488,6 +490,10 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v1.5.0 (2026)
+- Replaced **SaveImageWithSidecarTxt** with **SaveImageWithSidecarTxt_V2**
+- Added support for logging up to 3 separate sampler passes (Sampler, Scheduler, Steps, Seed) in the sidecar text file
 
 ### v1.4.0 (2025)
 - Added **SaveImageWithSidecarTxt** node for saving images with detailed metadata text files

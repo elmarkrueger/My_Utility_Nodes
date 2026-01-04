@@ -18,20 +18,13 @@ class AnyType(str):
 any = AnyType("*")
 
 
-class SaveImageWithSidecarTxt:
-    """
-    Eine Custom Node für ComfyUI, die Bilder speichert und simultan eine 
-    detaillierte Textdatei mit identischem Dateinamen erzeugt.
-    Features: 
-    - Benutzerdefinierter Ausgabepfad
-    - Formatwahl (PNG, JPG, JPEG, WEBP)
-    - Automatische Formatierung von Sampler-Listen (Semikolon -> Zeilenumbruch)
-    """
-    
+# --------------------------------------------------------------------------------
+# Node 2: V2 Version (Separate Inputs für 3 Sampler Passes)
+# --------------------------------------------------------------------------------
+class SaveImageWithSidecarTxt_V2:
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
         self.type = "output"
-        self.prefix_append = ""
         self.compress_level = 4
 
     @classmethod
@@ -40,86 +33,108 @@ class SaveImageWithSidecarTxt:
             "required": {
                 "images": ("IMAGE", ),
                 "filename_prefix": ("STRING", {"default": "ComfyUI"}),
-                # Neues Dropdown für Dateiformate
                 "file_format": (["PNG", "JPG", "JPEG", "WEBP"], {"default": "PNG"}),
             },
             "optional": {
                 "output_path": ("STRING", {"default": "", "multiline": False, "placeholder": "C:\\Mein\\Pfad (optional)"}),
-                
-                # ForceInput erzwingt, dass diese Werte von anderen Nodes kommen
                 "positive_prompt": ("STRING", {"forceInput": True, "multiline": True, "default": ""}),
                 "negative_prompt": ("STRING", {"forceInput": True, "multiline": True, "default": ""}),
                 "model_name": ("STRING", {"forceInput": True, "default": "Unknown Model"}),
                 "clip_name": ("STRING", {"forceInput": True, "default": "Unknown CLIP"}),
                 "vae_name": ("STRING", {"forceInput": True, "default": "Unknown VAE"}),
-                "sampler_details": ("STRING", {"forceInput": True, "multiline": True, "default": ""}),
+                
+                # --- Pass 1 ---
+                "p1_sampler": ("STRING", {"forceInput": True}),
+                "p1_scheduler": ("STRING", {"forceInput": True}),
+                "p1_steps": ("INT", {"forceInput": True}),
+                "p1_seed": ("INT", {"forceInput": True}),
+                
+                # --- Pass 2 ---
+                "p2_sampler": ("STRING", {"forceInput": True}),
+                "p2_scheduler": ("STRING", {"forceInput": True}),
+                "p2_steps": ("INT", {"forceInput": True}),
+                "p2_seed": ("INT", {"forceInput": True}),
+                
+                # --- Pass 3 ---
+                "p3_sampler": ("STRING", {"forceInput": True}),
+                "p3_scheduler": ("STRING", {"forceInput": True}),
+                "p3_steps": ("INT", {"forceInput": True}),
+                "p3_seed": ("INT", {"forceInput": True}),
             },
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
 
     RETURN_TYPES = ()
-    FUNCTION = "save_images_and_text"
+    FUNCTION = "save_images_and_text_v2"
     OUTPUT_NODE = True
     CATEGORY = "Custom_Research/IO"
 
-    def save_images_and_text(self, images, filename_prefix="ComfyUI", file_format="PNG", output_path="",
-                             positive_prompt="", negative_prompt="", 
-                             model_name="Unknown Model", clip_name="Unknown CLIP", 
-                             vae_name="Unknown VAE", sampler_details="", 
-                             prompt=None, extra_pnginfo=None):
+    def save_images_and_text_v2(self, images, filename_prefix="ComfyUI", file_format="PNG", output_path="",
+                                positive_prompt="", negative_prompt="", 
+                                model_name="Unknown Model", clip_name="Unknown CLIP", vae_name="Unknown VAE",
+                                p1_sampler=None, p1_scheduler=None, p1_steps=None, p1_seed=None,
+                                p2_sampler=None, p2_scheduler=None, p2_steps=None, p2_seed=None,
+                                p3_sampler=None, p3_scheduler=None, p3_steps=None, p3_seed=None,
+                                prompt=None, extra_pnginfo=None):
         
-        # 1. Bestimmen des Basis-Ausgabeverzeichnisses
+        # 1. Pfad-Logik (identisch zu V1)
         if output_path and output_path.strip():
             base_output_dir = output_path.strip()
             try:
-                if not os.path.exists(base_output_dir):
-                    os.makedirs(base_output_dir, exist_ok=True)
-            except Exception as e:
-                print(f"Fehler beim Erstellen des Ordners '{base_output_dir}': {e}")
-                base_output_dir = self.output_dir
+                if not os.path.exists(base_output_dir): os.makedirs(base_output_dir, exist_ok=True)
+            except: base_output_dir = self.output_dir
         else:
             base_output_dir = self.output_dir
 
-        # 2. Zugriff auf die zentrale Pfad-Logik von ComfyUI
         full_output_folder, filename, counter, subfolder, filename_prefix = \
             folder_paths.get_save_image_path(filename_prefix, base_output_dir, images.shape[2], images.shape[1])
         
-        results = list()
-        
-        # Dateiendung normalisieren
         extension = file_format.lower()
-        if extension == "jpeg": 
-            extension = "jpg" 
+        if extension == "jpeg": extension = "jpg"
 
-        # 3. Sampler Details formatieren (Neu: Semikolon zu Zeilenumbruch)
-        # Teilt den String am Semikolon, entfernt Leerzeichen und fügt ihn mit Zeilenumbrüchen wieder zusammen
-        formatted_sampler_details = ""
-        if sampler_details:
-            # Split am Semikolon, strip whitespace, filter leere Strings
-            parts = [s.strip() for s in sampler_details.split(";") if s.strip()]
-            formatted_sampler_details = "\n".join(parts)
+        # 2. Sampler String Konstruktion (Das Herzstück von V2)
+        sampler_lines = []
+        
+        # Pass 1
+        if p1_sampler or p1_steps:
+            s_name = p1_sampler if p1_sampler else "N/A"
+            sched = p1_scheduler if p1_scheduler else "N/A"
+            st = p1_steps if p1_steps is not None else "N/A"
+            sd = p1_seed if p1_seed is not None else "N/A"
+            sampler_lines.append(f"First Sampler: --> {s_name}, First Scheduler: --> {sched}, Steps first Sampler: --> {st}, Seed first Sampler: --> {sd}")
 
+        # Pass 2
+        if p2_sampler or p2_steps:
+            s_name = p2_sampler if p2_sampler else "N/A"
+            sched = p2_scheduler if p2_scheduler else "N/A"
+            st = p2_steps if p2_steps is not None else "N/A"
+            sd = p2_seed if p2_seed is not None else "N/A"
+            sampler_lines.append(f"Second Sampler: --> {s_name}, Second Scheduler: --> {sched}, Steps second Sampler: --> {st}, Seed second Sampler: --> {sd}")
+
+        # Pass 3
+        if p3_sampler or p3_steps:
+            s_name = p3_sampler if p3_sampler else "N/A"
+            sched = p3_scheduler if p3_scheduler else "N/A"
+            st = p3_steps if p3_steps is not None else "N/A"
+            sd = p3_seed if p3_seed is not None else "N/A"
+            sampler_lines.append(f"Third Sampler: --> {s_name}, Third Scheduler: --> {sched}, Steps third Sampler: --> {st}, Seed third Sampler: --> {sd}")
+
+        formatted_sampler_details = "\n".join(sampler_lines)
+
+        results = list()
         for image in images:
-            # 4. Bildverarbeitung (Tensor -> PIL Image)
+            # Bild speichern (identisch zu V1)
             i = 255. * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+            if file_format in ["JPG", "JPEG"] and img.mode == 'RGBA': img = img.convert('RGB')
             
-            # Format-spezifische Anpassungen (Transparenz entfernen für JPG)
-            if file_format in ["JPG", "JPEG"]:
-                if img.mode == 'RGBA':
-                    img = img.convert('RGB')
-            
-            # 5. Metadaten für das Bild selbst (nur relevant für PNG/WEBP)
             metadata = None
-            if file_format == "PNG": 
+            if file_format == "PNG":
                 metadata = PngInfo()
-                if prompt is not None:
-                    metadata.add_text("prompt", json.dumps(prompt))
-                if extra_pnginfo is not None:
-                    for x in extra_pnginfo:
-                        metadata.add_text(x, json.dumps(extra_pnginfo[x]))
+                if prompt is not None: metadata.add_text("prompt", json.dumps(prompt))
+                if extra_pnginfo is not None: 
+                    for x in extra_pnginfo: metadata.add_text(x, json.dumps(extra_pnginfo[x]))
 
-            # 6. Dateinamen generieren (Atomare Benennung)
             file_base = f"{filename}_{counter:05}_"
             file_img = f"{file_base}.{extension}"
             file_txt = f"{file_base}.txt"
@@ -127,15 +142,11 @@ class SaveImageWithSidecarTxt:
             image_path = os.path.join(full_output_folder, file_img)
             txt_path = os.path.join(full_output_folder, file_txt)
             
-            # 7. Bild speichern
-            if file_format == "PNG":
-                img.save(image_path, pnginfo=metadata, compress_level=self.compress_level)
-            elif file_format in ["JPG", "JPEG"]:
-                img.save(image_path, quality=95) 
-            elif file_format == "WEBP":
-                img.save(image_path, quality=95, lossless=False)
+            if file_format == "PNG": img.save(image_path, pnginfo=metadata, compress_level=self.compress_level)
+            elif file_format in ["JPG", "JPEG"]: img.save(image_path, quality=95)
+            elif file_format == "WEBP": img.save(image_path, quality=95, lossless=False)
 
-            # 8. Inhalt der Textdatei formatieren (mit formatiertem Sampler Detail)
+            # Text speichern
             txt_content = f"""FILENAME INFORMATION
 Filename: {file_img}
 Filepath: {image_path}
@@ -162,20 +173,11 @@ SAMPLING PROCESS (Seeds & Steps)
 ==================================================
 {formatted_sampler_details}
 """
-            
-            # 9. Textdatei schreiben
             try:
-                with open(txt_path, "w", encoding="utf-8") as f:
-                    f.write(txt_content)
-            except Exception as e:
-                print(f"Error writing sidecar text file: {e}")
+                with open(txt_path, "w", encoding="utf-8") as f: f.write(txt_content)
+            except Exception as e: print(f"Error: {e}")
                 
-            results.append({
-                "filename": file_img,
-                "subfolder": subfolder,
-                "type": self.type
-            })
-            
+            results.append({"filename": file_img, "subfolder": subfolder, "type": self.type})
             counter += 1
 
         return {"ui": {"images": results}}
@@ -596,7 +598,7 @@ NODE_CLASS_MAPPINGS = {
     "mxString3": mxString3,
     "mxInputSwitch": mxInputSwitch,
     "mxInputSwitch3": mxInputSwitch3,
-    "SaveImageWithSidecarTxt": SaveImageWithSidecarTxt,
+    "SaveImageWithSidecarTxt_V2": SaveImageWithSidecarTxt_V2,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -611,5 +613,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "mxString3": "String 3",
     "mxInputSwitch": "Input Switch",
     "mxInputSwitch3": "Input Switch 3",
-    "SaveImageWithSidecarTxt": "Bild mit Sidecar TXT speichern",
+    "SaveImageWithSidecarTxt_V2": "Bild mit Sidecar TXT speichern V2",
 }
