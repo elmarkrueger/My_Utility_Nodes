@@ -20,14 +20,14 @@ any = AnyType("*")
 
 class SaveImageWithSidecarTxt:
     """
-    Eine Custom Node für ComfyUI, die Bilder speichert und simultan eine
+    Eine Custom Node für ComfyUI, die Bilder speichert und simultan eine 
     detaillierte Textdatei mit identischem Dateinamen erzeugt.
-    Features:
+    Features: 
     - Benutzerdefinierter Ausgabepfad
     - Formatwahl (PNG, JPG, JPEG, WEBP)
-    - Synchronisierte Metadaten-Datei (.txt)
+    - Automatische Formatierung von Sampler-Listen (Semikolon -> Zeilenumbruch)
     """
-
+    
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
         self.type = "output"
@@ -38,42 +38,21 @@ class SaveImageWithSidecarTxt:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "images": ("IMAGE",),
+                "images": ("IMAGE", ),
                 "filename_prefix": ("STRING", {"default": "ComfyUI"}),
                 # Neues Dropdown für Dateiformate
                 "file_format": (["PNG", "JPG", "JPEG", "WEBP"], {"default": "PNG"}),
             },
             "optional": {
-                "output_path": (
-                    "STRING",
-                    {
-                        "default": "",
-                        "multiline": False,
-                        "placeholder": "C:\\Mein\\Pfad (optional)",
-                    },
-                ),
+                "output_path": ("STRING", {"default": "", "multiline": False, "placeholder": "C:\\Mein\\Pfad (optional)"}),
+                
                 # ForceInput erzwingt, dass diese Werte von anderen Nodes kommen
-                "positive_prompt": (
-                    "STRING",
-                    {"forceInput": True, "multiline": True, "default": ""},
-                ),
-                "negative_prompt": (
-                    "STRING",
-                    {"forceInput": True, "multiline": True, "default": ""},
-                ),
-                "model_name": (
-                    "STRING",
-                    {"forceInput": True, "default": "Unknown Model"},
-                ),
-                "clip_name": (
-                    "STRING",
-                    {"forceInput": True, "default": "Unknown CLIP"},
-                ),
+                "positive_prompt": ("STRING", {"forceInput": True, "multiline": True, "default": ""}),
+                "negative_prompt": ("STRING", {"forceInput": True, "multiline": True, "default": ""}),
+                "model_name": ("STRING", {"forceInput": True, "default": "Unknown Model"}),
+                "clip_name": ("STRING", {"forceInput": True, "default": "Unknown CLIP"}),
                 "vae_name": ("STRING", {"forceInput": True, "default": "Unknown VAE"}),
-                "sampler_details": (
-                    "STRING",
-                    {"forceInput": True, "multiline": True, "default": ""},
-                ),
+                "sampler_details": ("STRING", {"forceInput": True, "multiline": True, "default": ""}),
             },
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
@@ -83,22 +62,12 @@ class SaveImageWithSidecarTxt:
     OUTPUT_NODE = True
     CATEGORY = "Custom_Research/IO"
 
-    def save_images_and_text(
-        self,
-        images,
-        filename_prefix="ComfyUI",
-        file_format="PNG",
-        output_path="",
-        positive_prompt="",
-        negative_prompt="",
-        model_name="Unknown Model",
-        clip_name="Unknown CLIP",
-        vae_name="Unknown VAE",
-        sampler_details="",
-        prompt=None,
-        extra_pnginfo=None,
-    ):
-
+    def save_images_and_text(self, images, filename_prefix="ComfyUI", file_format="PNG", output_path="",
+                             positive_prompt="", negative_prompt="", 
+                             model_name="Unknown Model", clip_name="Unknown CLIP", 
+                             vae_name="Unknown VAE", sampler_details="", 
+                             prompt=None, extra_pnginfo=None):
+        
         # 1. Bestimmen des Basis-Ausgabeverzeichnisses
         if output_path and output_path.strip():
             base_output_dir = output_path.strip()
@@ -112,33 +81,37 @@ class SaveImageWithSidecarTxt:
             base_output_dir = self.output_dir
 
         # 2. Zugriff auf die zentrale Pfad-Logik von ComfyUI
-        full_output_folder, filename, counter, subfolder, filename_prefix = (
-            folder_paths.get_save_image_path(
-                filename_prefix, base_output_dir, images.shape[2], images.shape[1]
-            )
-        )
-
+        full_output_folder, filename, counter, subfolder, filename_prefix = \
+            folder_paths.get_save_image_path(filename_prefix, base_output_dir, images.shape[2], images.shape[1])
+        
         results = list()
-
+        
         # Dateiendung normalisieren
         extension = file_format.lower()
-        if extension == "jpeg":
-            extension = "jpg"  # Übliche Endung vereinheitlichen (oder 'jpeg' lassen, wenn gewünscht)
+        if extension == "jpeg": 
+            extension = "jpg" 
+
+        # 3. Sampler Details formatieren (Neu: Semikolon zu Zeilenumbruch)
+        # Teilt den String am Semikolon, entfernt Leerzeichen und fügt ihn mit Zeilenumbrüchen wieder zusammen
+        formatted_sampler_details = ""
+        if sampler_details:
+            # Split am Semikolon, strip whitespace, filter leere Strings
+            parts = [s.strip() for s in sampler_details.split(";") if s.strip()]
+            formatted_sampler_details = "\n".join(parts)
 
         for image in images:
-            # 3. Bildverarbeitung (Tensor -> PIL Image)
-            i = 255.0 * image.cpu().numpy()
+            # 4. Bildverarbeitung (Tensor -> PIL Image)
+            i = 255. * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-
-            # Format-spezifische Anpassungen
+            
+            # Format-spezifische Anpassungen (Transparenz entfernen für JPG)
             if file_format in ["JPG", "JPEG"]:
-                # JPEG unterstützt kein Alpha (Transparenz), daher Konvertierung zu RGB notwendig
-                if img.mode == "RGBA":
-                    img = img.convert("RGB")
-
-            # 4. Metadaten für das Bild selbst (nur relevant für PNG/WEBP/JPEG-Exif)
+                if img.mode == 'RGBA':
+                    img = img.convert('RGB')
+            
+            # 5. Metadaten für das Bild selbst (nur relevant für PNG/WEBP)
             metadata = None
-            if file_format == "PNG" and not False:
+            if file_format == "PNG": 
                 metadata = PngInfo()
                 if prompt is not None:
                     metadata.add_text("prompt", json.dumps(prompt))
@@ -146,25 +119,23 @@ class SaveImageWithSidecarTxt:
                     for x in extra_pnginfo:
                         metadata.add_text(x, json.dumps(extra_pnginfo[x]))
 
-            # 5. Dateinamen generieren (Atomare Benennung)
+            # 6. Dateinamen generieren (Atomare Benennung)
             file_base = f"{filename}_{counter:05}_"
             file_img = f"{file_base}.{extension}"
             file_txt = f"{file_base}.txt"
-
+            
             image_path = os.path.join(full_output_folder, file_img)
             txt_path = os.path.join(full_output_folder, file_txt)
-
-            # 6. Bild speichern
+            
+            # 7. Bild speichern
             if file_format == "PNG":
-                img.save(
-                    image_path, pnginfo=metadata, compress_level=self.compress_level
-                )
+                img.save(image_path, pnginfo=metadata, compress_level=self.compress_level)
             elif file_format in ["JPG", "JPEG"]:
-                img.save(image_path, quality=95)  # Hohe Qualität für JPG
+                img.save(image_path, quality=95) 
             elif file_format == "WEBP":
                 img.save(image_path, quality=95, lossless=False)
 
-            # 7. Inhalt der Textdatei formatieren
+            # 8. Inhalt der Textdatei formatieren (mit formatiertem Sampler Detail)
             txt_content = f"""FILENAME INFORMATION
 Filename: {file_img}
 Filepath: {image_path}
@@ -189,20 +160,22 @@ PROMPTS
 ==================================================
 SAMPLING PROCESS (Seeds & Steps)
 ==================================================
-{sampler_details}
+{formatted_sampler_details}
 """
-
-            # 8. Textdatei schreiben
+            
+            # 9. Textdatei schreiben
             try:
                 with open(txt_path, "w", encoding="utf-8") as f:
                     f.write(txt_content)
             except Exception as e:
                 print(f"Error writing sidecar text file: {e}")
-
-            results.append(
-                {"filename": file_img, "subfolder": subfolder, "type": self.type}
-            )
-
+                
+            results.append({
+                "filename": file_img,
+                "subfolder": subfolder,
+                "type": self.type
+            })
+            
             counter += 1
 
         return {"ui": {"images": results}}
