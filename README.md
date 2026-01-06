@@ -104,6 +104,12 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 |------|----------|-------------|
 | **Bild mit Sidecar TXT speichern V2** (`SaveImageWithSidecarTxt_V2`) | `Custom_Research/IO` | Saves images with a synchronized text file containing metadata (supports 3-pass sampling details) |
 
+### Latent Nodes
+
+| Node | Category | Description |
+|------|----------|-------------|
+| **Empty Qwen Latent** (`EmptyQwen2512LatentImage`) | `My_Utility_Nodes/Qwen` | Initializes empty latents for Qwen-Image-2512 (16 channels) with optimized resolutions |
+
 ---
 
 ## Node Details
@@ -379,6 +385,30 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 
 ---
 
+### 🌌 EmptyQwen2512LatentImage
+
+**Purpose:** Specialized initialization of empty latents for the Qwen-Image-2512 model, which requires a specific 16-channel architecture.
+
+**Inputs:**
+- `resolution` (COMBO): Select from optimized aspect ratios/resolutions (e.g., 16:9, 1:1, 9:16)
+- `batch_size` (INT): Number of latent images to generate (1-64)
+
+**Outputs:**
+- `latent` (LATENT): The initialized empty latent batch with 16 channels
+- `width` (INT): The effective width in pixels
+- `height` (INT): The effective height in pixels
+
+**Features:**
+- Automatic handling of the 16-channel structure required by Qwen
+- Pre-defined resolution presets optimized for the model
+- Correct downsampling factor calculation
+
+**Use Cases:**
+- Starting a Qwen-Image-2512 workflow
+- Ensuring correct latent dimensions and channels for this specific model architecture
+
+---
+
 ## Technical Architecture
 
 ### File Structure
@@ -532,6 +562,9 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v1.7.0 (2026)
+- Added **Empty Qwen Latent** (`EmptyQwen2512LatentImage`) for Qwen-Image-2512 model support with 16-channel latents.
 
 ### v1.6.0 (2026)
 - Added **Batch Logic Switch** (`BatchLogicSwitch`) node for splitting batches and assigning different parameters to groups.

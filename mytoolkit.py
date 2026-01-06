@@ -36,6 +36,75 @@ class SpecialAnyType(str):
 ANY = SpecialAnyType("*")
 
 
+class EmptyQwen2512LatentImage:
+    """
+    Eine spezialisierte ComfyUI Node zur Initialisierung leerer Latents für das
+    Qwen-Image-2512 Modell. Berücksichtigt die 16-Kanal-Architektur und
+    optimierte Auflösungen.
+    """
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        # Definition der unterstützten Auflösungen gemäß Research [1, 8]
+        # Das Format ist "Label: (Breite, Höhe)"
+        # Dies erleichtert die Auswahl im Dropdown
+        s.ratios = {
+            "1:1 (1328x1328)": (1328, 1328),
+            "16:9 (1664x928)": (1664, 928),
+            "9:16 (928x1664)": (928, 1664),
+            "4:3 (1472x1104)": (1472, 1104),
+            "3:4 (1104x1472)": (1104, 1472),
+            "3:2 (1584x1056)": (1584, 1056),
+            "2:3 (1056x1584)": (1056, 1584),
+        }
+
+        return {
+            "required": {
+                # Das Dropdown-Menü (COMBO)
+                "resolution": (list(s.ratios.keys()), {"default": "16:9 (1664x928)"}),
+                # Das Integer-Feld für die Batch Size
+                "batch_size": ("INT", {"default": 1, "min": 1, "max": 64, "step": 1}),
+            }
+        }
+
+    # Definition der drei Ausgänge: Latent, Breite, Höhe
+    RETURN_TYPES = ("LATENT", "INT", "INT")
+    RETURN_NAMES = ("latent", "width", "height")
+
+    # Name der Funktion, die ausgeführt wird
+    FUNCTION = "generate"
+
+    # Kategorie im Menü (My_Utility_Nodes Pack)
+    CATEGORY = "My_Utility_Nodes/Qwen"
+
+    def generate(self, resolution, batch_size):
+        # 1. Auflösung aus dem Dictionary extrahieren
+        width, height = self.ratios[resolution]
+
+        # 2. Technische Konstanten für Qwen-Image-2512
+        # Das Modell nutzt einen 16-Kanal VAE [5]
+        latent_channels = 16
+        # Der Downsampling-Faktor beträgt 8
+        downscale_factor = 8
+
+        # 3. Berechnung der latenten Dimensionen
+        # Integer Division (//) stellt sicher, dass wir ganze Zahlen erhalten
+        latent_width = width // downscale_factor
+        latent_height = height // downscale_factor
+
+        # 4. Initialisierung des Tensors
+        # Shape:
+        # Wir nutzen torch.zeros, da der Sampler das Noise hinzufügt
+        latent = torch.zeros([batch_size, latent_channels, latent_height, latent_width])
+
+        # 5. Rückgabe
+        # ComfyUI erwartet Latents in einem Dictionary mit Key "samples"
+        return ({"samples": latent}, width, height)
+
+
 class BatchLogicSwitch:
     """
     Eine Logik-Weiche, die einen Batch von Generationen in gleich große Gruppen aufteilt
@@ -786,6 +855,7 @@ NODE_CLASS_MAPPINGS = {
     "mxInputSwitch3": mxInputSwitch3,
     "SaveImageWithSidecarTxt_V2": SaveImageWithSidecarTxt_V2,
     "BatchLogicSwitch": BatchLogicSwitch,
+    "EmptyQwen2512LatentImage": EmptyQwen2512LatentImage,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -802,4 +872,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "mxInputSwitch3": "Input Switch 3",
     "SaveImageWithSidecarTxt_V2": "Bild mit Sidecar TXT speichern V2",
     "BatchLogicSwitch": "Batch Logic Switch",
+    "EmptyQwen2512LatentImage": "Empty Qwen-2512 Latent Image",
 }
