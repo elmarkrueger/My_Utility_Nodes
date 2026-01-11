@@ -85,6 +85,7 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 | Node | Category | Description |
 |------|----------|-------------|
 | **Input Switch** (`mxInputSwitch`) | `utils/switch` | Switches between two Any-type inputs with visual toggles |
+| **Size Switch** (`mxSizeSwitch`) | `utils/switch` | Switches between two resolution pairs (width/height) with independent labels |
 
 ### Logic Nodes
 
@@ -320,7 +321,29 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 5. The selected input is passed through to the output
 
 ---
+### 📏 mxSizeSwitch
 
+**Purpose:** Switch between two predefined resolution pairs (width/height) using a simple toggle.
+
+**Inputs:**
+- `width_A` (INT): Width for configuration A.
+- `height_A` (INT): Height for configuration A.
+- `label_A` (STRING): Customizable label for configuration A (e.g., "Portrait").
+- `width_B` (INT): Width for configuration B.
+- `height_B` (INT): Height for configuration B.
+- `label_B` (STRING): Customizable label for configuration B (e.g., "Landscape").
+- `select` (INT): Switch control (0 for A, 1 for B).
+
+**Outputs:**
+- `width` (INT): The selected width.
+- `height` (INT): The selected height.
+
+**Use Cases:**
+- Quickly toggling between Portrait and Landscape orientations.
+- Switching between "Preview" (low res) and "Production" (high res) sizes.
+- A/B testing different aspect ratios.
+
+---
 ### � BatchLogicSwitch
 
 **Purpose:** Divides a batch of generations into equal-sized groups and assigns different parameters (A, B, C) to each group. Replaces complex subgraphs of IntDiv, IntMul, and IfElif nodes.
@@ -562,6 +585,9 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v1.8.0 (2026)
+- Added **Size Switch** (`mxSizeSwitch`) node for easy toggling between two resolution pairs with customizable labels.
 
 ### v1.7.0 (2026)
 - Added **Empty Qwen Latent** (`EmptyQwen2512LatentImage`) for Qwen-Image-2512 model support with 16-channel latents.
