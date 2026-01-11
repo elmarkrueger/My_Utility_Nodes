@@ -39,8 +39,12 @@ ANY = SpecialAnyType("*")
 class EmptyQwen2512LatentImage:
     """
     Eine spezialisierte ComfyUI Node zur Initialisierung leerer Latents für das
-    Qwen-Image-2512 Modell. Berücksichtigt die 16-Kanal-Architektur und
-    optimierte Auflösungen.
+    Qwen-Image-2512 Modell.
+    Features:
+    - 16-Kanal-Architektur Support
+    - Optimierte Qwen-Auflösungen (Dropdown)
+    - Skalierungs-Slider (1.0 - 2.0)
+    - Automatische Rundung auf 16px Alignment
     """
 
     def __init__(self):
@@ -65,6 +69,18 @@ class EmptyQwen2512LatentImage:
             "required": {
                 # Das Dropdown-Menü (COMBO)
                 "resolution": (list(s.ratios.keys()), {"default": "16:9 (1664x928)"}),
+                # Der Skalierungs-Slider
+                # ComfyUI stellt FLOAT inputs mit min/max/step automatisch als Slider dar
+                "size_multiplier": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 1.0,
+                        "max": 2.0,
+                        "step": 0.25,
+                        "display": "slider",
+                    },
+                ),
                 # Das Integer-Feld für die Batch Size
                 "batch_size": ("INT", {"default": 1, "min": 1, "max": 64, "step": 1}),
             }
@@ -80,28 +96,41 @@ class EmptyQwen2512LatentImage:
     # Kategorie im Menü (My_Utility_Nodes Pack)
     CATEGORY = "My_Utility_Nodes/Qwen"
 
-    def generate(self, resolution, batch_size):
-        # 1. Auflösung aus dem Dictionary extrahieren
-        width, height = self.ratios[resolution]
+    def generate(self, resolution, size_multiplier, batch_size):
+        # 1. Basis-Auflösung aus dem Dictionary extrahieren
+        base_width, base_height = self.ratios[resolution]
 
-        # 2. Technische Konstanten für Qwen-Image-2512
+        # 2. Skalierung anwenden
+        # Wir multiplizieren mit dem Slider-Wert
+        scaled_width = base_width * size_multiplier
+        scaled_height = base_height * size_multiplier
+
+        # 3. Sicherheits-Rundung (Alignment)
+        # Um sicherzustellen, dass die Dimensionen sauber durch 16 teilbar sind (für VAE und Patches),
+        # runden wir das skalierte Ergebnis auf das nächste Vielfache von 16.
+        # Beispiel: 928 * 1.25 = 1160. 1160 / 16 = 72.5. Round -> 72 * 16 = 1152.
+        width = int(round(scaled_width / 16) * 16)
+        height = int(round(scaled_height / 16) * 16)
+
+        # 4. Technische Konstanten für Qwen-Image-2512
         # Das Modell nutzt einen 16-Kanal VAE [5]
         latent_channels = 16
         # Der Downsampling-Faktor beträgt 8
         downscale_factor = 8
 
-        # 3. Berechnung der latenten Dimensionen
+        # 5. Berechnung der latenten Dimensionen
         # Integer Division (//) stellt sicher, dass wir ganze Zahlen erhalten
         latent_width = width // downscale_factor
         latent_height = height // downscale_factor
 
-        # 4. Initialisierung des Tensors
+        # 6. Initialisierung des Tensors
         # Shape:
         # Wir nutzen torch.zeros, da der Sampler das Noise hinzufügt
         latent = torch.zeros([batch_size, latent_channels, latent_height, latent_width])
 
-        # 5. Rückgabe
+        # 7. Rückgabe
         # ComfyUI erwartet Latents in einem Dictionary mit Key "samples"
+        # Wir geben zudem die berechneten (skalierten) Integer-Werte für Breite und Höhe zurück
         return ({"samples": latent}, width, height)
 
 
@@ -841,6 +870,34 @@ class mxInputSwitch3:
             return (input_C,)
 
 
+class mxSizeSwitch:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "width_A": ("INT", {"default": 512, "min": 0, "max": 4294967296, "step": 8}),
+                "height_A": ("INT", {"default": 512, "min": 0, "max": 4294967296, "step": 8}),
+                "label_A": ("STRING", {"default": "Resolution A", "multiline": False}),
+                "width_B": ("INT", {"default": 1024, "min": 0, "max": 4294967296, "step": 8}),
+                "height_B": ("INT", {"default": 1024, "min": 0, "max": 4294967296, "step": 8}),
+                "label_B": ("STRING", {"default": "Resolution B", "multiline": False}),
+                "select": ("INT", {"default": 0, "min": 0, "max": 1}),
+            },
+        }
+
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("width", "height")
+
+    FUNCTION = "main"
+    CATEGORY = "utils/switch"
+
+    def main(self, width_A, height_A, label_A, width_B, height_B, label_B, select):
+        if select == 0:
+            return (width_A, height_A)
+        else:
+            return (width_B, height_B)
+
+
 NODE_CLASS_MAPPINGS = {
     "mxSlider": mxSlider,
     "mxSlider2D": mxSlider2D,
@@ -856,6 +913,7 @@ NODE_CLASS_MAPPINGS = {
     "SaveImageWithSidecarTxt_V2": SaveImageWithSidecarTxt_V2,
     "BatchLogicSwitch": BatchLogicSwitch,
     "EmptyQwen2512LatentImage": EmptyQwen2512LatentImage,
+    "mxSizeSwitch": mxSizeSwitch,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -873,4 +931,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SaveImageWithSidecarTxt_V2": "Bild mit Sidecar TXT speichern V2",
     "BatchLogicSwitch": "Batch Logic Switch",
     "EmptyQwen2512LatentImage": "Empty Qwen-2512 Latent Image",
+    "mxSizeSwitch": "Size Switch",
 }
