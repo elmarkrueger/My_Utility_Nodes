@@ -256,16 +256,11 @@ class SwitchCommandCenter:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "label_1": ("STRING", {"default": "Input 1", "multiline": False}),
-                "active_1": ("BOOLEAN", {"default": True}),
-                "label_2": ("STRING", {"default": "Input 2", "multiline": False}),
-                "active_2": ("BOOLEAN", {"default": True}),
-                "label_3": ("STRING", {"default": "Input 3", "multiline": False}),
-                "active_3": ("BOOLEAN", {"default": True}),
-                "label_4": ("STRING", {"default": "Input 4", "multiline": False}),
-                "active_4": ("BOOLEAN", {"default": True}),
-                "label_5": ("STRING", {"default": "Input 5", "multiline": False}),
-                "active_5": ("BOOLEAN", {"default": True}),
+                "active_1": ("BOOLEAN", {"default": True, "label_on": "ON", "label_off": "OFF"}),
+                "active_2": ("BOOLEAN", {"default": True, "label_on": "ON", "label_off": "OFF"}),
+                "active_3": ("BOOLEAN", {"default": True, "label_on": "ON", "label_off": "OFF"}),
+                "active_4": ("BOOLEAN", {"default": True, "label_on": "ON", "label_off": "OFF"}),
+                "active_5": ("BOOLEAN", {"default": True, "label_on": "ON", "label_off": "OFF"}),
             },
             "optional": {
                 "input_1": (SCCAnyType("*"),),
@@ -281,8 +276,7 @@ class SwitchCommandCenter:
     FUNCTION = "switch"
     CATEGORY = "utils/flow_control"
 
-    def switch(self, label_1, active_1, label_2, active_2, label_3, active_3, 
-               label_4, active_4, label_5, active_5,
+    def switch(self, active_1, active_2, active_3, active_4, active_5,
                input_1=None, input_2=None, input_3=None, input_4=None, input_5=None):
         blocker = ExecutionBlocker(None)
         
