@@ -256,12 +256,23 @@ class SwitchCommandCenter:
     def INPUT_TYPES(s):
         return {
             "required": {
+                "label_1": ("STRING", {"default": "Input 1", "multiline": False}),
+                "active_1": ("BOOLEAN", {"default": True}),
+                "label_2": ("STRING", {"default": "Input 2", "multiline": False}),
+                "active_2": ("BOOLEAN", {"default": True}),
+                "label_3": ("STRING", {"default": "Input 3", "multiline": False}),
+                "active_3": ("BOOLEAN", {"default": True}),
+                "label_4": ("STRING", {"default": "Input 4", "multiline": False}),
+                "active_4": ("BOOLEAN", {"default": True}),
+                "label_5": ("STRING", {"default": "Input 5", "multiline": False}),
+                "active_5": ("BOOLEAN", {"default": True}),
+            },
+            "optional": {
                 "input_1": (SCCAnyType("*"),),
                 "input_2": (SCCAnyType("*"),),
                 "input_3": (SCCAnyType("*"),),
                 "input_4": (SCCAnyType("*"),),
                 "input_5": (SCCAnyType("*"),),
-                "active": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -270,16 +281,22 @@ class SwitchCommandCenter:
     FUNCTION = "switch"
     CATEGORY = "utils/flow_control"
 
-    def switch(self, input_1=None, input_2=None, input_3=None, input_4=None, input_5=None, active=True):
-        if active:
-            return (input_1, input_2, input_3, input_4, input_5)
-        else:
-            blocker = ExecutionBlocker(None)
-            return (blocker, blocker, blocker, blocker, blocker)
+    def switch(self, label_1, active_1, label_2, active_2, label_3, active_3, 
+               label_4, active_4, label_5, active_5,
+               input_1=None, input_2=None, input_3=None, input_4=None, input_5=None):
+        blocker = ExecutionBlocker(None)
+        
+        out_1 = input_1 if active_1 else blocker
+        out_2 = input_2 if active_2 else blocker
+        out_3 = input_3 if active_3 else blocker
+        out_4 = input_4 if active_4 else blocker
+        out_5 = input_5 if active_5 else blocker
+        
+        return (out_1, out_2, out_3, out_4, out_5)
 
     @classmethod
     def IS_CHANGED(s, **kwargs):
-        # Force re-evaluation if the switch is toggled
+        # Force re-evaluation if any switch is toggled
         return float("NaN")
 
 
