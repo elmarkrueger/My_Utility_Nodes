@@ -25,15 +25,20 @@ A collection of custom utility nodes for ComfyUI, designed to streamline workflo
 
 My Utility Nodes is a ComfyUI custom node package that provides enhanced UI controls and utility functions for common workflow tasks. It includes interactive slider widgets with custom JavaScript interfaces, multi-value input nodes, and specialized image processing capabilities.
 
+**Version 2.0** features a complete reorganization into logical modules for better maintainability and scalability, plus new nodes for latent noise blending, megapixel-based image resizing, and advanced flow control.
+
 ### Key Features
 
 - **Interactive Sliders**: Custom-designed slider widgets with visual feedback
 - **Type Flexibility**: Supports both integer and float values with runtime switching
 - **Precision Control**: High-precision float sliders (0.01 steps) for fine-tuned adjustments
 - **Batch Input Handling**: Multi-value nodes for floats, integers, and strings
+- **Advanced Switching**: Multiple switch types including flow control and batch logic routing
 - **Lossless Image Conversion**: RGBA to RGB conversion without quality loss
+- **Megapixel Resizing**: Intelligent image resizing based on target megapixel count
+- **Latent Operations**: Specialized nodes for Qwen models and latent noise blending
 - **Enhanced Parameter Control**: Specialized sliders for CFG and model sampling parameters
-- **Extended Ranges**: Support for extended value ranges (0.00-15.00) for advanced use cases
+- **Modular Architecture**: Clean organization into 5 logical modules for easy maintenance
 
 ---
 
@@ -80,18 +85,15 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 | **Int 3** (`mxInt3`) | `utils/multiInteger` | Three independent integer inputs |
 | **String 3** (`mxString3`) | `utils/multiString` | Three independent string inputs |
 
-### Utility Nodes
+### Switch Nodes
 
 | Node | Category | Description |
 |------|----------|-------------|
 | **Input Switch** (`mxInputSwitch`) | `utils/switch` | Switches between two Any-type inputs with visual toggles |
+| **Input Switch 3** (`mxInputSwitch3`) | `utils/switch` | Switches between three Any-type inputs with visual toggles |
 | **Size Switch** (`mxSizeSwitch`) | `utils/switch` | Switches between two resolution pairs (width/height) with independent labels |
-
-### Logic Nodes
-
-| Node | Category | Description |
-|------|----------|-------------|
 | **Batch Logic Switch** (`BatchLogicSwitch`) | `MyUtilityNodes/Logic` | Splits a batch into groups and assigns different parameters |
+| **Switch Command Center** (`SwitchCommandCenter`) | `utils/flow_control` | Five-input flow control switch with active/inactive state |
 
 ### Image Processing
 
@@ -100,9 +102,8 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 | **RGBA zu RGB (Verlustfrei)** | `Bildverarbeitung/Konvertierung` | Lossless RGBA to RGB conversion |
 
 ### File I/O
-
-| Node | Category | Description |
-|------|----------|-------------|
+(`RGBA_to_RGB_Lossless`) | `Bildverarbeitung/Konvertierung` | Lossless RGBA to RGB conversion |
+| **Megapixel Resize** (`MegapixelResizeNode`) | `Image/Resizing` | Resizes images to target megapixel count while maintaining aspect ratio |
 | **Bild mit Sidecar TXT speichern V2** (`SaveImageWithSidecarTxt_V2`) | `Custom_Research/IO` | Saves images with a synchronized text file containing metadata (supports 3-pass sampling details) |
 
 ### Latent Nodes
@@ -110,9 +111,7 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 | Node | Category | Description |
 |------|----------|-------------|
 | **Empty Qwen Latent** (`EmptyQwen2512LatentImage`) | `My_Utility_Nodes/Qwen` | Initializes empty latents for Qwen-Image-2512 (16 channels) with optimized resolutions |
-
----
-
+| **Latent Noise Blender** (`LatentNoiseBlender`) | `Latent/Noise` | Blends a latent image with latent noise using percentage-based slider
 ## Node Details
 
 ### 🎚️ mxSlider
@@ -414,36 +413,209 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 
 **Inputs:**
 - `resolution` (COMBO): Select from optimized aspect ratios/resolutions (e.g., 16:9, 1:1, 9:16)
-- `batch_size` (INT): Number of latent images to generate (1-64)
+- `b🔀 mxInputSwitch3
+
+**Purpose:** Route one of three Any-type inputs to output using visual boolean switches
+
+**Inputs:**
+- `input_A` (ANY): First input (can be any ComfyUI data type)
+- `input_B` (ANY): Second input (can be any ComfyUI data type)
+- `input_C` (ANY): Third input (can be any ComfyUI data type)
+- `select_A` (INT): Boolean switch for input A (0 or 1)
+- `select_B` (INT): Boolean switch for input B (0 or 1)
+- `select_C` (INT): Boolean switch for input C (0 or 1)
 
 **Outputs:**
-- `latent` (LATENT): The initialized empty latent batch with 16 channels
-- `width` (INT): The effective width in pixels
-- `height` (INT): The effective height in pixels
+- `output` (ANY): The selected input (A, B, or C)
 
 **Features:**
-- Automatic handling of the 16-channel structure required by Qwen
-- Pre-defined resolution presets optimized for the model
-- Correct downsampling factor calculation
+- Visual toggle switches with ON/OFF indicators
+- Only one input can be active at a time
+- Works with any ComfyUI data type (images, latents, models, etc.)
 
 **Use Cases:**
-- Starting a Qwen-Image-2512 workflow
-- Ensuring correct latent dimensions and channels for this specific model architecture
+- A/B/C testing three different models or settings
+- Three-way conditional routing in workflows
+- Compare three different processing paths
 
 ---
 
-## Technical Architecture
+### 🎛️ SwitchCommandCenter
 
-### File Structure
-
-```
-My_Utility_Nodes/
-├── __init__.py              # Package initialization and exports
-├── mytoolkit.py             # Python node definitions
+**Purpose:** Five-input flow control switch with active/inactive state using ExecutionBlocker
+module imports
+├── slider_nodes.py          # Slider and parameter control nodes
+├── multi_value_nodes.py     # Multi-value input nodes (floats, ints, strings)
+├── switch_nodes.py          # All switching and logic routing nodes
+├── image_nodes.py           # Image processing and I/O nodes
+├── latent_nodes.py          # Latent space operation nodes
 ├── js/                      # Frontend JavaScript extensions
 │   ├── CFGGuider.js         # CFG slider widget
 │   ├── ModelSamplingFloat.js # Model sampling slider widget
 │   ├── Slider.js            # Single-axis slider widget
+│   ├── Slider2D.js          # Dual-axis slider widget
+│   ├── MultiSlider.js       # Multi-value slider widget (5 sliders)
+│   ├── MultiSlider4.js      # Multi-value slider widget (4 sliders)
+│   ├── Int3.js              # Integer input widget
+│   ├── String3.js           # String input widget
+│   ├── InputSwitch.js       # Two-input switch toggle widget
+│   ├── InputSwitch3.js      # Three-input switch toggle widget
+│   └── switch_node.js       # Switch command center widget
+└── README.md                # This file
+```
+
+### Module Organization
+
+The package is organized into **5 logical modules** for better maintainability:
+
+1. **slider_nodes.py** - Parameter sliders and control widgets
+   - mxSlider, mxSlider2D, mxCFGGuider, mxModelSamplingFloat
+
+2. **multi_value_nodes.py** - Multiple value inputs
+   - mxFloat4, mxFloat5, mxInt3, mxString3
+
+3. **switch_nodes.py** - Switching and routing logic
+   - mxInputSwitch, mxInputSwitch3, mxSizeSwitch, BatchLogicSwitch, SwitchCommandCenter
+
+4. **image_nodes.py** - Image processing and file operations
+   - RGBA_to_RGB_Lossless, MegapixelResizeNode, SaveImageWithSidecarTxt_V2
+
+5. **latent_nodes.py** - Latent space operations
+   - EmptyQwen2512LatentImage, LatentNoiseBlender
+**Use Cases:**
+- Enable/disable entire workflow branches
+- Conditional execution of expensive operations
+- Testing and debugging complex node chains
+- Dynamic workflow routing based on user input
+
+---
+
+### 🌌 EmptyQwen2512LatentImage
+
+**Purpose:** Specialized initialization of empty latents for the Qwen-Image-2512 model, which requires a specific 16-channel architecture.
+
+**Inputs:**
+- `resolution` (COMBO): Select from optimized aspect ratios/resolutions (e.g., 16:9, 1:1, 9:16)
+- `size_multiplier` (FLOAT): Scale factor for resolution (1.0-2.0, step: 0.25)
+- `batch_size` (INT): Number of latent images to generate (1-64)
+
+**Outputs:**
+- `latent` (LATENT): The initialized empty latent batch with 16 channels
+- `width` (INT): The effective width in pixels (aligned to 16px)
+- `height` (INT): The effective height in pixels (aligned to 16px)
+
+**Features:**
+- Automatic handling of the 16-channel structure required by Qwen
+- Pre-defined resolution presets optimized for the model (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3)
+- Scaling slider for resolution adjustment (1.0x to 2.0x)
+- Automatic alignment to 16px for optimal VAE encoding
+- Correct downsampling factor calculation (factor of 8)
+
+**Use Cases:**
+- Starting a Qwen-Image-2512 workflow
+- Ensuring correct latent dimensions and channels for this specific model architecture
+- Experimenting with different resolutions via the multiplier
+
+---
+
+### 🎨 LatentNoiseBlender
+
+**Purpose:** Blend a latent image with latent noise using a percentage-based slider, ideal for adding controlled noise to latent space representations.
+
+**Inputs:**
+- `latent_image` (LATENT): Base latent structure
+- `latent_noise` (LATENT): Noise latent to blend in
+- `blend_percentage` (INT): Blend amount 0-100 (default: 50, visual slider)
+
+**Outputs:**
+- `blended_latent` (LATENT): The resulting blended latent
+
+**Features:**
+- Smart shape compatibility checking with automatic resize if needed
+- Device-aware processing (handles GPU/CPU automatically)
+- Preserves latent metadata and masks
+- Visual percentage slider (0-100)
+- Batch broadcasting support (1→N or N→N)
+
+**Formula:**
+```
+output = (1 - alpha) * image + alpha * noise
+where alpha = blend_percentage / 100
+```
+
+**Use Cases:**
+- Adding controlled noise to latents before sampling
+- Creative latent space manipulation
+- Noise injection for style variation
+- Experimental latent blending techniques
+- Pre-processing latents for specific samplers
+
+---
+
+### 🖼️ MegapixelResizeNode
+
+**Purpose:** Resize images to a specific megapixel count while maintaining aspect ratio and ensuring VAE-compatible dimensions (multiples of 8).
+
+**Inputs:**
+- `image` (IMAGE): Input image batch
+- `target_megapixels` (FLOAT): Target size in megapixels (0.1-4.0, default: 1.0)
+- `method` (COMBO): Resampling method (lanczos, bicubic, bilinear, nearest-exact, area)
+
+**Outputs:**
+- `IMAGE`: Resized image
+- `width` (INT): New width in pixels
+- `height` (INT): New height in pixels
+
+**Features:**
+- Maintains original aspect ratio
+- Ensures dimensions are multiples of 8 for VAE compatibility
+- Target size in megapixels (e.g., 1.0 MP ≈ 1024×1024)
+- Multiple resampling methods for quality/speed trade-offs
+- Automatic safety clamping to prevent zero-dimension images
+
+**Calculation:**
+```
+target_pixels = megapixels * 1,000,000
+height = sqrt(target_pixels / aspect_ratio)
+width = height * aspect_ratio
+(rounded to nearest multiple of 8)
+```
+
+**Use Cases:**
+- Standardizing images to consistent sizes for batch processing
+- Preparing images for specific model input requirements
+- Downsizing large images while maintaining quality
+- Creating thumbnails or previews at specific megapixel targets
+- Ensuring VAE-compatible dimensions automatically
+
+```2.0.0 (2026-02-03) - Major Reorganization
+- **Complete code reorganization** into 5 logical modules for better maintainability
+  - `slider_nodes.py` - Slider and parameter controls (4 nodes)
+  - `multi_value_nodes.py` - Multi-value inputs (4 nodes)
+  - `switch_nodes.py` - Switching and routing logic (5 nodes)
+  - `image_nodes.py` - Image processing and I/O (3 nodes)
+  - `latent_nodes.py` - Latent space operations (2 nodes)
+- **New Nodes:**
+  - Added **Latent Noise Blender** (`LatentNoiseBlender`) - Blend latents with noise using percentage slider
+  - Added **Megapixel Resize** (`MegapixelResizeNode`) - Intelligent image resizing by target megapixel count
+  - Added **Switch Command Center** (`SwitchCommandCenter`) - Five-input flow control with ExecutionBlocker
+- **Enhanced Nodes:**
+  - `EmptyQwen2512LatentImage` now includes size_multiplier slider for resolution scaling
+  - All nodes from `mytoolkit.py` distributed to appropriate modules
+- **Documentation:**
+  - Complete README overhaul reflecting new structure
+  - Added detailed documentation for all new nodes
+  - Updated examples and usage patterns
+- **Total Node Count:** 18 nodes organized across 5 modules
+
+### v1.8.0 (2026)
+- Added **Size Switch** (`mxSizeSwitch`) node for easy toggling between two resolution pairs with customizable labels
+
+### v1.7.0 (2026)
+- Added **Empty Qwen Latent** (`EmptyQwen2512LatentImage`) for Qwen-Image-2512 model support with 16-channel latents
+
+### v1.6.0 (2026)
+- Added **Batch Logic Switch** (`BatchLogicSwitch`) node for splitting batches and assigning different parameters to groups
 │   ├── Slider2D.js          # Dual-axis slider widget
 │   ├── MultiSlider.js       # Multi-value slider widget (5 sliders)
 │   ├── MultiSlider4.js      # Multi-value slider widget (4 sliders)
@@ -555,6 +727,37 @@ Connect your image and all metadata strings (prompts, model names, sampler detai
 ```
 
 Split a batch of 12 images into 3 groups of 4. Assign different LoRAs or prompts to `input_A`, `input_B`, and `input_C`. The switch will automatically route the correct parameter based on the current image index.
+
+### Example 10: Latent Noise Blending
+
+```
+[Empty Latent Image] → latent_image ─┐
+                                       ├─ [Latent Noise Blender] → [KSampler]
+[Random Noise Latent] → latent_noise ─┘
+```
+
+Blend 50% of random noise into your base latent to add variation before sampling. Adjust the blend_percentage slider from 0-100 to control noise intensity.
+
+### Example 11: Megapixel-Based Resizing
+
+```
+[Load Image] → [Megapixel Resize] → [VAE Encode]
+                (target: 2.0 MP)
+```
+
+Resize any input image to exactly 2 megapixels while maintaining aspect ratio and ensuring dimensions are VAE-compatible (multiples of 8). Perfect for standardizing batch inputs.
+
+### Example 12: Flow Control with Switch Command Center
+
+```
+[Model A] ──┐
+[Prompt A] ─┤
+[LoRA A] ───┼── [Switch Command Center] ──→ [Active Branch Processing]
+[CFG A] ────┤      (active: True/False)
+[Steps A] ──┘
+```
+
+Enable or disable entire workflow branches with a single toggle. When inactive, ExecutionBlocker prevents downstream nodes from executing, saving computation time during experimentation.
 
 ---
 
