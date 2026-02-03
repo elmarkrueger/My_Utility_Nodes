@@ -14,16 +14,22 @@ app.registerExtension({
             node._editingLabel = -1;
             node._editText = "";
 
-            // Custom draw function for toggle widgets with editable labels
+            // Custom draw and mouse handling for toggle widgets with editable labels
             for (let i = 1; i <= 5; i++) {
                 const widget = node.widgets.find(w => w.name === `active_${i}`);
                 if (widget) {
                     const idx = i - 1;
-                    const origDraw = widget.draw;
                     
-                    widget.draw = function(ctx, node, width, y, height) {
-                        const label = node.properties.labels[idx] || `Input ${i}`;
-                        const isEditing = node._editingLabel === idx;
+                    // Store the last drawn Y position for hit detection
+                    widget._lastY = 0;
+                    
+                    widget.draw = function(ctx, n, width, y, height) {
+                        this._lastY = y;
+                        this._height = height;
+                        this._width = width;
+                        
+                        const label = n.properties.labels[idx] || `Input ${i}`;
+                        const isEditing = n._editingLabel === idx;
                         
                         // Draw background
                         ctx.fillStyle = "#232323";
@@ -67,7 +73,7 @@ app.registerExtension({
                             ctx.font = "12px Arial";
                             ctx.textAlign = "left";
                             ctx.textBaseline = "middle";
-                            const displayText = node._editText + "|";
+                            const displayText = n._editText + "|";
                             ctx.fillText(displayText, 25, y + height / 2);
                         } else {
                             ctx.fillStyle = this.value ? "#fff" : "#888";
@@ -78,49 +84,37 @@ app.registerExtension({
                         }
                     };
                     
-                    // Store toggle hit area info
-                    widget._toggleArea = { width: 40 };
+                    // Override mouse handler to separate label clicks from toggle clicks
+                    widget.mouse = function(event, pos, n) {
+                        if (event.type === "pointerdown") {
+                            const localX = pos[0];
+                            const toggleX = this._width - 40 - 25;
+                            
+                            if (localX >= toggleX) {
+                                // Clicked on toggle switch area - toggle the value
+                                this.value = !this.value;
+                                app.graph.setDirtyCanvas(true, true);
+                                return true;
+                            } else if (localX >= 15 && localX < toggleX - 5) {
+                                // Clicked on label area - start editing
+                                // First, save any currently editing label
+                                if (n._editingLabel >= 0 && n._editingLabel !== idx) {
+                                    n.properties.labels[n._editingLabel] = n._editText || `Input ${n._editingLabel + 1}`;
+                                }
+                                n._editingLabel = idx;
+                                n._editText = n.properties.labels[idx] || `Input ${idx + 1}`;
+                                app.graph.setDirtyCanvas(true, true);
+                                return true;
+                            }
+                        }
+                        return false;
+                    };
                 }
             }
 
-            // Handle mouse events for toggle and label editing
+            // Handle clicks outside widgets to finish editing
             const origOnMouseDown = node.onMouseDown;
             node.onMouseDown = function(e, localPos, graphCanvas) {
-                if (this.flags.collapsed) return;
-                
-                const x = localPos[0];
-                const y = localPos[1];
-                
-                // Check if clicking on any widget area
-                if (this.widgets) {
-                    let widgetY = this.computeSize()[1] - this.widgets.length * 25 - 5;
-                    
-                    for (let i = 0; i < this.widgets.length; i++) {
-                        const widget = this.widgets[i];
-                        if (widget.name && widget.name.startsWith("active_")) {
-                            const idx = parseInt(widget.name.split("_")[1]) - 1;
-                            const widgetHeight = 25;
-                            const toggleX = this.size[0] - 40 - 25;
-                            
-                            if (y >= widgetY && y < widgetY + widgetHeight) {
-                                if (x >= toggleX) {
-                                    // Clicked on toggle - toggle the value
-                                    widget.value = !widget.value;
-                                    app.graph.setDirtyCanvas(true, true);
-                                    return true;
-                                } else if (x >= 20 && x < toggleX - 10) {
-                                    // Clicked on label area - start editing
-                                    this._editingLabel = idx;
-                                    this._editText = this.properties.labels[idx] || `Input ${idx + 1}`;
-                                    app.graph.setDirtyCanvas(true, true);
-                                    return true;
-                                }
-                            }
-                        }
-                        widgetY += 25;
-                    }
-                }
-                
                 // If clicking elsewhere while editing, finish editing
                 if (this._editingLabel >= 0) {
                     this.properties.labels[this._editingLabel] = this._editText || `Input ${this._editingLabel + 1}`;
