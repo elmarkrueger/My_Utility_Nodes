@@ -186,7 +186,7 @@ class VAEDecodeAudioTiled(IO.ComfyNode):
     def define_schema(cls):
         return IO.Schema(
             node_id="VAEDecodeAudioTiled",
-            display_name="VAE Decode Audio (Tiled)",
+            display_name="ACE VAE Decode Audio (Tiled)",
             category="latent/audio",
             inputs=[
                 IO.Latent.Input("samples"),
