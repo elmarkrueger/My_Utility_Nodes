@@ -178,13 +178,92 @@ class LatentNoiseBlender:
         
         return (result_latent,)
 
+from comfy_api.latest import IO, UI, ComfyExtension
+
+
+class VAEDecodeAudioTiled(IO.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return IO.Schema(
+            node_id="VAEDecodeAudioTiled",
+            display_name="VAE Decode Audio (Tiled)",
+            category="latent/audio",
+            inputs=[
+                IO.Latent.Input("samples"),
+                IO.Vae.Input("vae"),
+                IO.Int.Input("tile_size", default=512, min=128, max=4096),
+                IO.Int.Input("overlap", default=64, min=16, max=512),
+            ],
+            outputs=[IO.Audio.Output()],
+        )
+
+    @classmethod
+    def execute(cls, vae, samples, tile_size, overlap) -> IO.NodeOutput:
+        latents = samples["samples"]
+        batch_size, channels, total_steps = latents.shape
+        upscale_ratio = 1920 # ACE-Step 1.5 constant
+        
+        # Calculate output size
+        total_samples = total_steps * upscale_ratio
+        
+        # Allocate CPU buffer
+        output_buffer = torch.zeros((batch_size, 2, total_samples), dtype=torch.float32, device="cpu")
+        weight_buffer = torch.zeros((batch_size, 2, total_samples), dtype=torch.float32, device="cpu")
+        
+        stride = tile_size - overlap
+        
+        # Window function (Hann)
+        # Note: Window needs to be generated per tile size if last tile is smaller
+        
+        for start_idx in range(0, total_steps, stride):
+            end_idx = min(start_idx + tile_size, total_steps)
+            tile_latent = latents[:, :, start_idx:end_idx]
+            
+            # Decode on GPU
+            # Auto-move to GPU handled by comfy model management or manual.to()
+            gpu_latent = tile_latent.to(vae.device)
+            decoded_tile = vae.decode(gpu_latent).movedim(-1, 1) #
+            
+            # Move to CPU
+            cpu_tile = decoded_tile.cpu()
+            
+            # Create Window
+            current_audio_len = cpu_tile.shape[-1]
+            window = torch.hann_window(current_audio_len, device="cpu").view(1, 1, -1)
+            
+            # Calculate buffer placement
+            sample_start = start_idx * upscale_ratio
+            sample_end = sample_start + current_audio_len
+            
+            # Accumulate
+            output_buffer[:, :, sample_start:sample_end] += cpu_tile * window
+            weight_buffer[:, :, sample_start:sample_end] += window
+            
+            # VRAM Cleanup
+            del gpu_latent, decoded_tile
+            torch.cuda.empty_cache() # Optional, aggressive cleanup
+
+        # Normalize weights
+        mask = weight_buffer > 1e-6
+        output_buffer[mask] /= weight_buffer[mask]
+        
+        # Global STD Normalization (on CPU)
+        std = torch.std(output_buffer, dim=(1, 2), keepdim=True) * 5.0
+        std[std < 1.0] = 1.0
+        output_buffer /= std
+        
+        vae_sample_rate = getattr(vae, "audio_sample_rate", 44100)
+        return IO.NodeOutput({"waveform": output_buffer, "sample_rate": vae_sample_rate})
+
 
 NODE_CLASS_MAPPINGS = {
     "EmptyQwen2512LatentImage": EmptyQwen2512LatentImage,
     "LatentNoiseBlender": LatentNoiseBlender,
+    "VAEDecodeAudioTiled": VAEDecodeAudioTiled,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "EmptyQwen2512LatentImage": "Empty Qwen-2512 Latent Image",
     "LatentNoiseBlender": "Latent Noise Blender",
+    "VAEDecodeAudioTiled": "VAE Decode Audio (Tiled)",
 }

@@ -111,7 +111,8 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 | Node | Category | Description |
 |------|----------|-------------|
 | **Empty Qwen Latent** (`EmptyQwen2512LatentImage`) | `My_Utility_Nodes/Qwen` | Initializes empty latents for Qwen-Image-2512 (16 channels) with optimized resolutions |
-| **Latent Noise Blender** (`LatentNoiseBlender`) | `Latent/Noise` | Blends a latent image with latent noise using percentage-based slider
+| **Latent Noise Blender** (`LatentNoiseBlender`) | `Latent/Noise` | Blends a latent image with latent noise using percentage-based slider |
+| **VAE Decode Audio (Tiled)** (`VAEDecodeAudioTiled`) | `latent/audio` | Memory-efficient tiled audio decoding from latents with overlap blending
 ## Node Details
 
 ### 🎚️ mxSlider
@@ -481,7 +482,7 @@ The package is organized into **5 logical modules** for better maintainability:
    - RGBA_to_RGB_Lossless, MegapixelResizeNode, SaveImageWithSidecarTxt_V2
 
 5. **latent_nodes.py** - Latent space operations
-   - EmptyQwen2512LatentImage, LatentNoiseBlender
+   - EmptyQwen2512LatentImage, LatentNoiseBlender, VAEDecodeAudioTiled
 **Use Cases:**
 - Enable/disable entire workflow branches
 - Conditional execution of expensive operations
@@ -552,7 +553,48 @@ where alpha = blend_percentage / 100
 
 ---
 
-### 🖼️ MegapixelResizeNode
+### � VAEDecodeAudioTiled
+
+**Purpose:** Memory-efficient tiled decoding of audio latents, designed for processing long audio sequences without running out of VRAM.
+
+**Inputs:**
+- `samples` (LATENT): Audio latent samples to decode
+- `vae` (VAE): VAE model for decoding (e.g., ACE-Step audio VAE)
+- `tile_size` (INT): Size of each processing tile (128-4096, default: 512)
+- `overlap` (INT): Overlap between tiles for smooth blending (16-512, default: 64)
+
+**Outputs:**
+- `AUDIO`: Decoded audio waveform with sample rate
+
+**Features:**
+- **Tiled Processing**: Decodes audio in chunks to minimize VRAM usage
+- **Hann Window Blending**: Smooth transitions between tiles using overlap-add with Hann windowing
+- **CPU Buffer Allocation**: Output accumulated on CPU to avoid GPU memory overflow
+- **Automatic VRAM Cleanup**: Clears GPU cache after each tile for maximum efficiency
+- **STD Normalization**: Global normalization for consistent audio output levels
+- **ACE-Step Compatible**: Designed for ACE-Step 1.5 audio models (1920x upscale ratio)
+
+**Technical Details:**
+```
+stride = tile_size - overlap
+For each tile:
+  1. Extract latent slice
+  2. Decode on GPU
+  3. Apply Hann window
+  4. Accumulate to CPU buffer with overlap-add
+  5. Clear VRAM
+Finally: Normalize by accumulated weights and apply STD normalization
+```
+
+**Use Cases:**
+- Decoding long audio sequences that would otherwise exceed VRAM
+- Processing high-resolution audio latents from ACE-Step models
+- Memory-constrained workflows requiring audio generation
+- Batch audio decoding with limited GPU memory
+
+---
+
+### �🖼️ MegapixelResizeNode
 
 **Purpose:** Resize images to a specific megapixel count while maintaining aspect ratio and ensuring VAE-compatible dimensions (multiples of 8).
 
@@ -788,6 +830,13 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v2.1.0 (2026-02-04)
+- Added **VAE Decode Audio (Tiled)** (`VAEDecodeAudioTiled`) for memory-efficient audio latent decoding
+  - Tiled processing with Hann window overlap blending
+  - CPU buffer accumulation to avoid VRAM overflow
+  - Compatible with ACE-Step 1.5 audio models
+- **Total Node Count:** 19 nodes organized across 5 modules
 
 ### v1.8.0 (2026)
 - Added **Size Switch** (`mxSizeSwitch`) node for easy toggling between two resolution pairs with customizable labels.
