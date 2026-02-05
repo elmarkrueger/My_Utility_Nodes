@@ -37,8 +37,9 @@ My Utility Nodes is a ComfyUI custom node package that provides enhanced UI cont
 - **Lossless Image Conversion**: RGBA to RGB conversion without quality loss
 - **Megapixel Resizing**: Intelligent image resizing based on target megapixel count
 - **Latent Operations**: Specialized nodes for Qwen models and latent noise blending
+- **Audio Export**: MP3 export with quality control and batch processing support
 - **Enhanced Parameter Control**: Specialized sliders for CFG and model sampling parameters
-- **Modular Architecture**: Clean organization into 5 logical modules for easy maintenance
+- **Modular Architecture**: Clean organization into 6 logical modules for easy maintenance
 
 ---
 
@@ -61,7 +62,12 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 
 - ComfyUI (latest version recommended)
 - PyTorch
-- No additional Python packages required
+- **pydub** (required for audio MP3 export)
+
+Install Python dependencies:
+```bash
+pip install -r requirements.txt
+```
 
 ---
 
@@ -100,6 +106,12 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 | Node | Category | Description |
 |------|----------|-------------|
 | **RGBA zu RGB (Verlustfrei)** | `Bildverarbeitung/Konvertierung` | Lossless RGBA to RGB conversion |
+
+### Audio Processing
+
+| Node | Category | Description |
+|------|----------|-------------|
+| **Save Audio as MP3 (Custom)** (`SaveAudioAsMP3_Custom`) | `Audio/Custom` | Exports audio to MP3 files with quality control and batch support |
 
 ### File I/O
 (`RGBA_to_RGB_Lossless`) | `Bildverarbeitung/Konvertierung` | Lossless RGBA to RGB conversion |
@@ -218,6 +230,78 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 - No pixel recomputation or compression
 - Extremely memory-efficient (view operation)
 - Fast processing (no data copying)
+
+---
+
+### 🎵 SaveAudioAsMP3_Custom
+
+**Purpose:** Export audio data to MP3 files with configurable quality settings and automatic batch processing.
+
+**Inputs:**
+- `audio` (AUDIO): Audio data containing waveform tensor and sample rate
+- `filename` (STRING): Base filename for output files (default: "audio_output")
+- `path` (STRING): Optional custom output directory path (default: "" uses ComfyUI output directory)
+- `quality` (COMBO): MP3 bitrate selection - 320k, 256k, 192k (default), 128k, or 64k
+
+**Outputs:**
+- None (Output Node)
+
+**Technical Implementation:**
+1. **Path Resolution**
+   - Uses ComfyUI's default output directory if path is empty
+   - Creates custom directories automatically if they don't exist
+   - Validates and handles path errors gracefully
+
+2. **Audio Data Processing**
+   - Extracts waveform tensor and sample rate from AUDIO format
+   - Processes each audio in batch automatically (batch dimension: waveform.shape[0])
+   - Converts PyTorch tensors to NumPy arrays (CPU)
+
+3. **Format Conversion**
+   - **Stereo (2 channels):** Converts from planar format to interleaved format
+   - **Mono (1 channel):** Flattens to 1D array
+   - Handles channel detection automatically
+
+4. **Audio Quantization**
+   - Clips audio values to [-1.0, 1.0] range to prevent distortion
+   - Converts float32 audio to int16 format (scales by 32767)
+   - Maintains audio quality during conversion
+
+5. **MP3 Export via Pydub**
+   - Creates AudioSegment with proper sample width (2 bytes), frame rate, and channels
+   - Exports to MP3 format with selected bitrate
+   - Uses pydub's ffmpeg backend for encoding
+
+6. **Batch & Filename Handling**
+   - Appends batch index for batches > 1 (e.g., `audio_001.mp3`, `audio_002.mp3`)
+   - Implements overwrite protection with auto-increment counter
+   - Prevents file conflicts automatically
+
+**Features:**
+- **Quality Control:** Five bitrate options from 64k (small file) to 320k (maximum quality)
+- **Batch Processing:** Automatically processes and saves multiple audio files
+- **Overwrite Protection:** Never overwrites existing files - adds numeric suffix instead
+- **Custom Paths:** Save to any directory with automatic creation
+- **Channel Flexibility:** Handles both mono and stereo audio automatically
+- **ComfyUI Integration:** Works seamlessly with ComfyUI's audio pipeline
+
+**Dependencies:**
+- Requires `pydub` library (install via `pip install -r requirements.txt`)
+- Pydub uses ffmpeg for MP3 encoding
+
+**Use Cases:**
+- Exporting generated audio from text-to-speech or music generation models
+- Converting ComfyUI audio format to standard MP3 files
+- Batch audio export with quality presets
+- Creating audio assets at different quality levels for different use cases
+- Archiving audio workflow results
+
+**Quality Guide:**
+- **320k:** Maximum quality, large files (~2.5 MB/min)
+- **256k:** Very high quality (~2 MB/min)
+- **192k:** High quality, balanced size (default, ~1.5 MB/min)
+- **128k:** Good quality, smaller files (~1 MB/min)
+- **64k:** Low quality, minimal size (~0.5 MB/min, voice-only)
 
 ---
 
@@ -444,7 +528,32 @@ git clone https://github.com/elmarkrueger/My_Utility_Nodes.git
 ### 🎛️ SwitchCommandCenter
 
 **Purpose:** Five-input flow control switch with active/inactive state using ExecutionBlocker
-module imports
+
+**Inputs:**
+- `input_1` through `input_5` (ANY): Five inputs of any ComfyUI data type
+- `active` (BOOLEAN): Enable/disable switch execution
+
+**Outputs:**
+- `output_1` through `output_5` (ANY): Pass-through outputs when active
+
+**Features:**
+- Controls whether downstream nodes execute
+- Uses ExecutionBlocker for flow control
+- Visual active/inactive state indicator
+
+**Use Cases:**
+- Enable/disable entire workflow branches
+- Conditional execution of expensive operations
+- Testing and debugging complex node chains
+- Dynamic workflow routing based on user input
+
+---
+
+## Technical Architecture
+
+```
+__init__.py                  # Package entry point with NODE_CLASS_MAPPINGS
+├── audio_nodes.py           # Audio processing and export nodes
 ├── slider_nodes.py          # Slider and parameter control nodes
 ├── multi_value_nodes.py     # Multi-value input nodes (floats, ints, strings)
 ├── switch_nodes.py          # All switching and logic routing nodes
@@ -467,7 +576,7 @@ module imports
 
 ### Module Organization
 
-The package is organized into **5 logical modules** for better maintainability:
+The package is organized into **6 logical modules** for better maintainability:
 
 1. **slider_nodes.py** - Parameter sliders and control widgets
    - mxSlider, mxSlider2D, mxCFGGuider, mxModelSamplingFloat
@@ -483,6 +592,9 @@ The package is organized into **5 logical modules** for better maintainability:
 
 5. **latent_nodes.py** - Latent space operations
    - EmptyQwen2512LatentImage, LatentNoiseBlender, VAEDecodeAudioTiled
+
+6. **audio_nodes.py** - Audio processing and export
+   - SaveAudioAsMP3_Custom
 **Use Cases:**
 - Enable/disable entire workflow branches
 - Conditional execution of expensive operations
@@ -801,6 +913,15 @@ Resize any input image to exactly 2 megapixels while maintaining aspect ratio an
 
 Enable or disable entire workflow branches with a single toggle. When inactive, ExecutionBlocker prevents downstream nodes from executing, saving computation time during experimentation.
 
+### Example 13: Audio Export to MP3
+
+```
+[Audio Generation Node] → audio → [SaveAudioAsMP3_Custom]
+                                   (quality: 192k, filename: "my_audio")
+```
+
+Export generated audio from text-to-speech or music generation models directly to MP3 format. Choose quality preset from 64k to 320k based on your needs. Batch audio is automatically processed and saved with index numbers (e.g., `my_audio_001.mp3`, `my_audio_002.mp3`). Supports custom output paths and automatic overwrite protection.
+
 ---
 
 ## License
@@ -830,6 +951,16 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v2.2.0 (2026-02-05)
+- Added **Save Audio as MP3 (Custom)** (`SaveAudioAsMP3_Custom`) for audio export functionality
+  - Export audio to MP3 format with quality control (64k-320k bitrate)
+  - Batch processing with automatic file naming and overwrite protection
+  - Custom output path support with automatic directory creation
+  - Handles mono and stereo audio with proper format conversion
+- **New Module:** `audio_nodes.py` - Audio processing and export
+- **Dependencies:** Added `requirements.txt` with pydub package requirement
+- **Total Node Count:** 20 nodes organized across 6 modules
 
 ### v2.1.0 (2026-02-04)
 - Added **VAE Decode Audio (Tiled)** (`VAEDecodeAudioTiled`) for memory-efficient audio latent decoding
