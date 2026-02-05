@@ -96,3 +96,12 @@ class SaveAudioAsMP3_Custom:
             segment.export(full_path, format="mp3", bitrate=quality)
             
         return {}
+
+
+NODE_CLASS_MAPPINGS = {
+    "SaveAudioAsMP3_Custom": SaveAudioAsMP3_Custom
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "SaveAudioAsMP3_Custom": "Save Audio as MP3 (Custom)"
+}
