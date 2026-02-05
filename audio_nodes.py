@@ -45,8 +45,8 @@ class SaveAudioAsMP3_Custom:
         sample_rate = audio["sample_rate"]
         
         # 3. Batch Processing Loop
-        # Waveform shape is
-        batch_size = waveform.shape
+        # Waveform shape is (batch, channels, samples)
+        batch_size = waveform.shape[0]
         
         for i in range(batch_size):
             # Extract single slice:
@@ -56,7 +56,7 @@ class SaveAudioAsMP3_Custom:
             audio_np = audio_tensor.cpu().numpy()
             
             # 4. Format Conversion (Planar to Interleaved)
-            channels = audio_np.shape
+            channels = audio_np.shape[0]
             if channels == 2:
                 # Interleave stereo
                 audio_np = audio_np.T.flatten()
