@@ -255,15 +255,112 @@ class VAEDecodeAudioTiled(IO.ComfyNode):
         vae_sample_rate = getattr(vae, "audio_sample_rate", 44100)
         return IO.NodeOutput({"waveform": output_buffer, "sample_rate": vae_sample_rate})
 
+import torch
+import torch.nn.functional as F
 
+
+class ACELatentBlend:
+    """
+    A specialized node for blending ACE-Step 1.5 1D audio latents.
+    Supports dynamic resizing, time-stretching, and Spherical Linear Interpolation (Slerp).
+    """
+    
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "latents_a": ("LATENT",), # Typically the "Empty" or "Target" latent
+                "latents_b": ("LATENT",), # Typically the "Reference" or "Loaded" latent
+                "blend_mode": (["Linear", "Slerp", "Add", "Multiply"], {"default": "Linear"}),
+                "blend_strength": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "resize_mode": (["Crop/Pad", "Time Stretch"], {"default": "Crop/Pad"}),
+            }
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "blend"
+    CATEGORY = "ACE_Step/Latent"
+
+    def slerp(self, val, low, high):
+        """
+        Spherical Linear Interpolation for 1D tensors.
+        Adapted to handle (B, C, L) format by flattening and reshaping.
+        """
+        low_flat = low.reshape(low.shape[0], -1)
+        high_flat = high.reshape(high.shape[0], -1)
+        
+        omega = torch.acos((low_flat * high_flat).sum(dim=1).clamp(-1, 1))
+        so = torch.sin(omega)
+        
+        # Handle cases where vectors are collinear (omega ~ 0)
+        res = (torch.sin((1.0 - val) * omega) / so).unsqueeze(1) * low_flat + \
+              (torch.sin(val * omega) / so).unsqueeze(1) * high_flat
+              
+        return res.reshape(low.shape)
+
+    def blend(self, latents_a, latents_b, blend_mode, blend_strength, resize_mode):
+        # Extract tensor samples. ACE-Step latents are typically
+        t_a = latents_a["samples"].clone()
+        t_b = latents_b["samples"].clone()
+        
+        # 1. Align Dimensions (Temporal)
+        # Target length is determined by latents_a (the primary input)
+        target_len = t_a.shape[2]
+        source_len = t_b.shape[2]
+        
+        if source_len!= target_len:
+            if resize_mode == "Time Stretch":
+                # Interpolate t_b to match t_a length
+                t_b = F.interpolate(t_b, size=target_len, mode='linear', align_corners=False)
+            else: # Crop/Pad
+                if source_len > target_len:
+                    t_b = t_b[:, :, :target_len] # Crop end
+                else:
+                    padding = target_len - source_len
+                    # Pad with zeros at the end
+                    t_b = F.pad(t_b, (0, padding), "constant", 0)
+
+        # 2. Ensure Batch Size Alignment
+        # If batch sizes differ, repeat the smaller one to match
+        if t_a.shape[0] != t_b.shape[0]:
+             max_batch = max(t_a.shape[0], t_b.shape[0])
+             if t_a.shape[0] < max_batch:
+                 t_a = t_a.repeat(max_batch // t_a.shape[0], 1, 1)
+             if t_b.shape[0] < max_batch:
+                 t_b = t_b.repeat(max_batch // t_b.shape[0], 1, 1)
+
+        # 3. Perform Blending
+        if blend_mode == "Linear":
+            blended = (1.0 - blend_strength) * t_a + blend_strength * t_b
+            
+        elif blend_mode == "Slerp":
+            # Slerp is mathematically superior for latent vectors
+            # Ideally blend_strength acts as 'val' (t)
+            # If t_a is "Empty" (Noise) and t_b is "Audio", we interpolate from Noise to Audio
+            blended = self.slerp(blend_strength, t_a, t_b)
+            
+        elif blend_mode == "Add":
+            blended = t_a + (t_b * blend_strength)
+            
+        elif blend_mode == "Multiply":
+            blended = t_a * (t_b * blend_strength + (1 - blend_strength))
+        else:
+            blended = (1.0 - blend_strength) * t_a + blend_strength * t_b
+            
+        # Return formatted latent
+        return ({"samples": blended},)
+
+# Node Mapping for ComfyUI Registration
 NODE_CLASS_MAPPINGS = {
     "EmptyQwen2512LatentImage": EmptyQwen2512LatentImage,
     "LatentNoiseBlender": LatentNoiseBlender,
     "VAEDecodeAudioTiled": VAEDecodeAudioTiled,
+    "ACELatentBlend": ACELatentBlend,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "EmptyQwen2512LatentImage": "Empty Qwen-2512 Latent Image",
     "LatentNoiseBlender": "Latent Noise Blender",
     "VAEDecodeAudioTiled": "VAE Decode Audio (Tiled)",
+    "ACELatentBlend": "ACE Latent Blend 1.5",
 }
