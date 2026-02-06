@@ -124,7 +124,8 @@ pip install -r requirements.txt
 |------|----------|-------------|
 | **Empty Qwen Latent** (`EmptyQwen2512LatentImage`) | `My_Utility_Nodes/Qwen` | Initializes empty latents for Qwen-Image-2512 (16 channels) with optimized resolutions |
 | **Latent Noise Blender** (`LatentNoiseBlender`) | `Latent/Noise` | Blends a latent image with latent noise using percentage-based slider |
-| **VAE Decode Audio (Tiled)** (`VAEDecodeAudioTiled`) | `latent/audio` | Memory-efficient tiled audio decoding from latents with overlap blending
+| **VAE Decode Audio (Tiled)** (`VAEDecodeAudioTiled`) | `latent/audio` | Memory-efficient tiled audio decoding from latents with overlap blending |
+| **ACE Latent Blend 1.5** (`ACELatentBlend`) | `ACE_Step/Latent` | Blends ACE-Step 1.5 audio latents with Linear, Slerp, Add, and Multiply modes |
 ## Node Details
 
 ### 🎚️ mxSlider
@@ -591,7 +592,7 @@ The package is organized into **6 logical modules** for better maintainability:
    - RGBA_to_RGB_Lossless, MegapixelResizeNode, SaveImageWithSidecarTxt_V2
 
 5. **latent_nodes.py** - Latent space operations
-   - EmptyQwen2512LatentImage, LatentNoiseBlender, VAEDecodeAudioTiled
+   - EmptyQwen2512LatentImage, LatentNoiseBlender, VAEDecodeAudioTiled, ACELatentBlend
 
 6. **audio_nodes.py** - Audio processing and export
    - SaveAudioAsMP3_Custom
@@ -665,7 +666,47 @@ where alpha = blend_percentage / 100
 
 ---
 
-### � VAEDecodeAudioTiled
+### 🎛️ ACELatentBlend
+
+**Purpose:** Specialized blending of ACE-Step 1.5 1D audio latents with multiple blend modes, dynamic resizing, and Spherical Linear Interpolation (Slerp).
+
+**Inputs:**
+- `latents_a` (LATENT): The primary/target latent (e.g., empty or noise latent)
+- `latents_b` (LATENT): The secondary/reference latent (e.g., loaded audio latent)
+- `blend_mode` (COMBO): Blending algorithm — Linear, Slerp, Add, or Multiply (default: Linear)
+- `blend_strength` (FLOAT): Blend factor 0.0-1.0 (default: 0.5, step: 0.01)
+- `resize_mode` (COMBO): How to handle mismatched temporal lengths — Crop/Pad or Time Stretch (default: Crop/Pad)
+
+**Outputs:**
+- `LATENT`: The blended latent result
+
+**Blend Modes:**
+- **Linear:** `(1 - strength) * A + strength * B` — Standard weighted average
+- **Slerp:** Spherical Linear Interpolation — Maintains magnitude, ideal for latent vectors
+- **Add:** `A + (B * strength)` — Additive blending, preserves A and layers B on top
+- **Multiply:** `A * (B * strength + (1 - strength))` — Multiplicative modulation
+
+**Resize Modes:**
+- **Crop/Pad:** Crops longer latents or zero-pads shorter ones to match `latents_a` length
+- **Time Stretch:** Interpolates `latents_b` temporally to match `latents_a` length
+
+**Features:**
+- Automatic temporal alignment between latents of different lengths
+- Batch size alignment via repetition when batch sizes differ
+- Slerp implementation handles collinear vectors gracefully
+- Compatible with ACE-Step 1.5 audio latent format (B, C, L)
+- Fine-grained blend control with 0.01 step precision
+
+**Use Cases:**
+- Blending reference audio latents with noise for guided generation
+- Time-stretching audio latents to match different durations
+- Creative audio latent manipulation with different blend curves
+- Interpolating between two audio concepts in latent space using Slerp
+- Layering audio characteristics from one generation onto another
+
+---
+
+### 🔊 VAEDecodeAudioTiled
 
 **Purpose:** Memory-efficient tiled decoding of audio latents, designed for processing long audio sequences without running out of VRAM.
 
@@ -913,7 +954,17 @@ Resize any input image to exactly 2 megapixels while maintaining aspect ratio an
 
 Enable or disable entire workflow branches with a single toggle. When inactive, ExecutionBlocker prevents downstream nodes from executing, saving computation time during experimentation.
 
-### Example 13: Audio Export to MP3
+### Example 13: ACE-Step Latent Blending
+
+```
+[ACE Empty Latent] → latents_a ─┐
+                                  ├─ [ACE Latent Blend 1.5] → [ACE Sampler]
+[ACE Encode Audio] → latents_b ─┘   (mode: Slerp, strength: 0.7)
+```
+
+Blend a reference audio latent into an empty noise latent using Slerp interpolation at 70% strength. The node automatically handles temporal alignment if the latents have different lengths. Use "Time Stretch" resize mode to match durations, or "Crop/Pad" to trim/extend.
+
+### Example 14: Audio Export to MP3
 
 ```
 [Audio Generation Node] → audio → [SaveAudioAsMP3_Custom]
@@ -951,6 +1002,14 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v2.3.0 (2026-02-06)
+- Added **ACE Latent Blend 1.5** (`ACELatentBlend`) for blending ACE-Step 1.5 audio latents
+  - Four blend modes: Linear, Slerp, Add, Multiply
+  - Automatic temporal alignment with Crop/Pad or Time Stretch
+  - Batch size alignment via repetition
+  - Fine-grained blend strength control (0.01 steps)
+- **Total Node Count:** 21 nodes organized across 6 modules
 
 ### v2.2.0 (2026-02-05)
 - Added **Save Audio as MP3 (Custom)** (`SaveAudioAsMP3_Custom`) for audio export functionality
