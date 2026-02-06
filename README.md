@@ -697,6 +697,14 @@ where alpha = blend_percentage / 100
 - Compatible with ACE-Step 1.5 audio latent format (B, C, L)
 - Fine-grained blend control with 0.01 step precision
 
+**⚠️ Denoise Setting (Critical):**
+
+When using ACELatentBlend, the `denoise` value on your sampler must be adjusted to complement the `blend_strength`. As a rule of thumb, set denoise to approximately `1.0 - blend_strength`. For example, if you blend 30% (`blend_strength = 0.3`) of a reference audio latent into empty noise, the latent is already partially formed — a high denoise would overwrite that injected structure.
+
+- **Sweet spot: 0.6–0.8 denoise.** This range respects the blended reference while still allowing the sampler to generate new content guided by your prompts.
+- **Below 0.5 denoise:** Too much of the reference audio will dominate the output. The sampler doesn't have enough freedom to reshape the latent, leading to audible distortions and poor quality in the generated song.
+- **At 1.0 denoise:** The sampler fully re-noises the latent, effectively ignoring the blended reference entirely.
+
 **Use Cases:**
 - Blending reference audio latents with noise for guided generation
 - Time-stretching audio latents to match different durations
