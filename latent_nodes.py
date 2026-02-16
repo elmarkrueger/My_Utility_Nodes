@@ -350,12 +350,95 @@ class ACELatentBlend:
         # Return formatted latent
         return ({"samples": blended},)
 
+class GenerateNoiseForFlux2Klein:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                # Step size increased to 16 to prevent fractional tensor truncation during f16 downscaling
+                "width": ("INT", {"default": 1024, "min": 16, "max": 8192, "step": 16}),
+                "height": ("INT", {"default": 1024, "min": 16, "max": 8192, "step": 16}),
+                "batch_size": ("INT", {"default": 1, "min": 1, "max": 4096}),
+                "seed": ("INT", {"default": 123, "min": 0, "max": 0xffffffffffffffff, "step": 1}),
+                "multiplier": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4096, "step": 0.01}),
+                "constant_batch_noise": ("BOOLEAN", {"default": False}),
+                "normalize": ("BOOLEAN", {"default": False}),
+            },
+            "optional": {
+                "model": ("MODEL", ),
+                "sigmas": ("SIGMAS", ),
+                # Schema expanded to support Flux 2's 128-channel Rectified Flow architecture
+                "latent_channels": (['4', '16', '128'],),
+                "shape": (['BCHW', 'BCTHW', 'BTCHW'],),
+            }
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "generatenoise"
+    CATEGORY = "KJNodes/noise"
+    DESCRIPTION = """
+Generates highly parameterized noise for injection or to be used as empty latents.
+Refactored to support Flux 2 Klein architectures (128 channels, f16 spatial downsampling)
+while maintaining strict backward compatibility with SD1.5/SDXL/SD3 workflows.
+"""
+
+    def generatenoise(self, batch_size, width, height, seed, multiplier, constant_batch_noise, normalize, sigmas=None, model=None, latent_channels='4', shape="BCHW"):
+
+        # Initialize manual seed array to guarantee deterministic inference across multiple runs
+        generator = torch.manual_seed(seed)
+
+        # Parse the string-based UI selection into a computational integer
+        channels = int(latent_channels)
+
+        # Core Algorithmic Shift: Dynamically determine the spatial downscale factor.
+        # Flux 2 architectures require an f16 spatial compression alongside 128 channels.
+        # Legacy architectures strictly utilize f8 downsampling.
+        downscale_factor = 16 if channels == 128 else 8
+
+        # Execute the spatial compression matrix math
+        spatial_h = height // downscale_factor
+        spatial_w = width // downscale_factor
+
+        # Construct pure Gaussian noise tensors based on the requested topological format
+        if shape == "BCHW":
+            # Standard 2D Image Synthesis Format (Batch, Channel, Height, Width)
+            noise = torch.randn([batch_size, channels, spatial_h, spatial_w], dtype=torch.float32, layout=torch.strided, generator=generator, device="cpu")
+        elif shape == "BCTHW":
+            # Volumetric Format for Video Synthesis: Time injected before Spatial dimensions
+            noise = torch.randn([1, channels, batch_size, spatial_h, spatial_w], dtype=torch.float32, layout=torch.strided, generator=generator, device="cpu")
+        elif shape == "BTCHW":
+            # Alternative Volumetric Format: Time injected after Batch dimension
+            noise = torch.randn([1, batch_size, channels, spatial_h, spatial_w], dtype=torch.float32, layout=torch.strided, generator=generator, device="cpu")
+
+        # Apply strict variance scaling based on diffusion scheduling arrays
+        if sigmas is not None and model is not None:
+            sigma = sigmas - sigmas[-1]
+            # Extract the specific latent scale factor encoded into the model's metadata
+            sigma /= model.model.latent_format.scale_factor
+            noise *= sigma
+
+        # Apply the user-defined intensity multiplier
+        noise *= multiplier
+
+        # Normalize mathematical variance across the entire multi-dimensional array
+        if normalize:
+            noise = noise / noise.std()
+
+        # Optimization: Enforce identical noise across the batch to mitigate VRAM limits
+        if constant_batch_noise:
+            noise = noise.repeat(batch_size, 1, 1, 1)
+
+        # Output dictionary formatted securely for the ComfyUI execution payload
+        return ({"samples": noise}, )
+
+
 # Node Mapping for ComfyUI Registration
 NODE_CLASS_MAPPINGS = {
     "EmptyQwen2512LatentImage": EmptyQwen2512LatentImage,
     "LatentNoiseBlender": LatentNoiseBlender,
     "VAEDecodeAudioTiled": VAEDecodeAudioTiled,
     "ACELatentBlend": ACELatentBlend,
+    "GenerateNoiseForFlux2Klein": GenerateNoiseForFlux2Klein,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -363,4 +446,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LatentNoiseBlender": "Latent Noise Blender",
     "VAEDecodeAudioTiled": "VAE Decode Audio (Tiled)",
     "ACELatentBlend": "ACE Latent Blend 1.5",
+    "GenerateNoiseForFlux2Klein": "Generate Noise (Flux 2 Klein)",
 }

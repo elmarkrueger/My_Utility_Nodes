@@ -126,6 +126,7 @@ pip install -r requirements.txt
 | **Latent Noise Blender** (`LatentNoiseBlender`) | `Latent/Noise` | Blends a latent image with latent noise using percentage-based slider |
 | **VAE Decode Audio (Tiled)** (`VAEDecodeAudioTiled`) | `latent/audio` | Memory-efficient tiled audio decoding from latents with overlap blending |
 | **ACE Latent Blend 1.5** (`ACELatentBlend`) | `ACE_Step/Latent` | Blends ACE-Step 1.5 audio latents with Linear, Slerp, Add, and Multiply modes |
+| **Generate Noise (Flux 2 Klein)** (`GenerateNoiseForFlux2Klein`) | `KJNodes/noise` | Generates parameterized noise for Flux 2 Klein (128ch, f16) with backward compatibility for SD1.5/SDXL/SD3 |
 ## Node Details
 
 ### 🎚️ mxSlider
@@ -592,7 +593,7 @@ The package is organized into **6 logical modules** for better maintainability:
    - RGBA_to_RGB_Lossless, MegapixelResizeNode, SaveImageWithSidecarTxt_V2
 
 5. **latent_nodes.py** - Latent space operations
-   - EmptyQwen2512LatentImage, LatentNoiseBlender, VAEDecodeAudioTiled, ACELatentBlend
+   - EmptyQwen2512LatentImage, LatentNoiseBlender, VAEDecodeAudioTiled, ACELatentBlend, GenerateNoiseForFlux2Klein
 
 6. **audio_nodes.py** - Audio processing and export
    - SaveAudioAsMP3_Custom
@@ -711,6 +712,51 @@ When using ACELatentBlend, the `denoise` value on your sampler must be adjusted 
 - Creative audio latent manipulation with different blend curves
 - Interpolating between two audio concepts in latent space using Slerp
 - Layering audio characteristics from one generation onto another
+
+---
+
+### 🔊 GenerateNoiseForFlux2Klein
+
+**Purpose:** Generates highly parameterized noise tensors for injection or use as empty latents, refactored to support Flux 2 Klein architectures (128 channels, f16 spatial downsampling) while maintaining backward compatibility with SD1.5/SDXL/SD3 workflows.
+
+**Inputs:**
+- `width` (INT): Image width in pixels (16-8192, step: 16, default: 1024)
+- `height` (INT): Image height in pixels (16-8192, step: 16, default: 1024)
+- `batch_size` (INT): Number of noise samples to generate (1-4096, default: 1)
+- `seed` (INT): Random seed for deterministic generation (default: 123)
+- `multiplier` (FLOAT): Noise intensity multiplier (0.0-4096, step: 0.01, default: 1.0)
+- `constant_batch_noise` (BOOLEAN): Replicate identical noise across the batch (default: False)
+- `normalize` (BOOLEAN): Normalize noise variance to unit standard deviation (default: False)
+- `model` (MODEL, optional): Model for sigma-based variance scaling
+- `sigmas` (SIGMAS, optional): Diffusion schedule sigmas for noise scaling
+- `latent_channels` (COMBO, optional): Number of latent channels — 4 (SD1.5/SDXL), 16 (SD3/Qwen), or 128 (Flux 2 Klein)
+- `shape` (COMBO, optional): Tensor layout — BCHW (2D images), BCTHW or BTCHW (video/volumetric)
+
+**Outputs:**
+- `LATENT`: Generated noise tensor wrapped in ComfyUI latent format
+
+**Key Features:**
+- **Flux 2 Klein Support:** 128-channel latent noise with f16 spatial downsampling
+- **Dynamic Downscaling:** Automatically uses f16 for 128 channels, f8 for 4/16 channels
+- **Multiple Tensor Shapes:** BCHW (standard image), BCTHW/BTCHW (video synthesis)
+- **Sigma Scaling:** Optional variance scaling using model sigmas and latent format scale factor
+- **Deterministic Seeds:** Manual seed-based generator for reproducible noise
+- **Normalization:** Optional unit variance normalization
+- **Constant Batch Noise:** Option to repeat identical noise across the batch dimension
+
+**Architecture Compatibility:**
+| Channels | Downscale | Use Case |
+|----------|-----------|----------|
+| 4 | f8 | SD 1.5, SDXL |
+| 16 | f8 | SD3, Qwen-Image-2512 |
+| 128 | f16 | Flux 2 Klein |
+
+**Use Cases:**
+- Generating empty latents for Flux 2 Klein workflows
+- Creating parameterized noise injection for any diffusion architecture
+- Video synthesis latent initialization (BCTHW/BTCHW formats)
+- Sigma-aware noise scaling for custom sampling schedules
+- Deterministic noise generation for reproducible experiments
 
 ---
 
@@ -972,7 +1018,16 @@ Enable or disable entire workflow branches with a single toggle. When inactive, 
 
 Blend a reference audio latent into an empty noise latent using Slerp interpolation at 70% strength. The node automatically handles temporal alignment if the latents have different lengths. Use "Time Stretch" resize mode to match durations, or "Crop/Pad" to trim/extend.
 
-### Example 14: Audio Export to MP3
+### Example 14: Flux 2 Klein Noise Generation
+
+```
+[GenerateNoiseForFlux2Klein] → latent → [KSampler / Flux 2 Pipeline]
+  (channels: 128, shape: BCHW, width: 1024, height: 1024)
+```
+
+Generate 128-channel noise at f16 spatial resolution for Flux 2 Klein workflows. The node automatically applies the correct downscale factor (f16 for 128 channels). For legacy SD1.5/SDXL workflows, simply select 4 channels to use standard f8 downsampling. Optionally connect a model and sigmas for variance-scaled noise.
+
+### Example 15: Audio Export to MP3
 
 ```
 [Audio Generation Node] → audio → [SaveAudioAsMP3_Custom]
@@ -1010,6 +1065,15 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v2.4.0 (2026-02-16)
+- Added **Generate Noise (Flux 2 Klein)** (`GenerateNoiseForFlux2Klein`) for parameterized noise generation
+  - Supports Flux 2 Klein 128-channel architecture with f16 spatial downsampling
+  - Backward compatible with SD1.5/SDXL (4ch) and SD3/Qwen (16ch)
+  - Multiple tensor shapes: BCHW (image), BCTHW/BTCHW (video)
+  - Optional sigma-based variance scaling, normalization, and constant batch noise
+  - Deterministic seed-based generation for reproducibility
+- **Total Node Count:** 22 nodes organized across 6 modules
 
 ### v2.3.0 (2026-02-06)
 - Added **ACE Latent Blend 1.5** (`ACELatentBlend`) for blending ACE-Step 1.5 audio latents
