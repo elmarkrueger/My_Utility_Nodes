@@ -1,4 +1,5 @@
 # ComfyUI - Image Processing Nodes - Elmar Krüger - 2025
+import hashlib
 import json
 import math
 import os
@@ -7,7 +8,12 @@ import comfy.utils
 import folder_paths
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageOps
+
+try:
+    from server import PromptServer
+except ImportError:
+    PromptServer = None
 from PIL.PngImagePlugin import PngInfo
 
 
@@ -415,14 +421,161 @@ class MegapixelResizeNode:
         return (result_image, new_w, new_h)
 
 
+class DirectoryImageIterator:
+    """
+    Loads a sorted slice of images from a directory and forwards them one-by-one
+    to downstream nodes via ComfyUI's list-iteration paradigm. Supports mixed
+    resolutions, displays a thumbnail preview on the canvas, and invalidates
+    the execution cache only when the target directory slice actually changes.
+    """
+
+    VALID_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp', '.tiff')
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "folder_path": ("STRING", {"default": "", "multiline": False}),
+                "start_index": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1}),
+                "image_limit": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1}),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID"
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("image", "filename")
+    OUTPUT_IS_LIST = (True, True)
+    FUNCTION = "load_images"
+    CATEGORY = "image/iteration"
+
+    @classmethod
+    def _get_target_files(cls, folder_path, start_index, image_limit):
+        """Returns the deterministically sorted slice of valid image filenames."""
+        files = sorted(
+            f for f in os.listdir(folder_path)
+            if f.lower().endswith(cls.VALID_EXTENSIONS)
+        )
+        end_idx = start_index + image_limit if image_limit > 0 else len(files)
+        return files[start_index:end_idx]
+
+    @classmethod
+    def IS_CHANGED(cls, folder_path, start_index, image_limit, **kwargs):
+        """Cryptographic hash of the target slice — re-executes only on real changes."""
+        folder_path = os.path.realpath(os.path.abspath(folder_path))
+        if not os.path.isdir(folder_path):
+            return float("NaN")
+
+        m = hashlib.sha256()
+        for filename in cls._get_target_files(folder_path, start_index, image_limit):
+            file_path = os.path.join(folder_path, filename)
+            m.update(filename.encode('utf-8'))
+            m.update(str(os.path.getmtime(file_path)).encode('utf-8'))
+        return m.hexdigest()
+
+    def load_images(self, folder_path, start_index, image_limit, unique_id=None):
+        # Resolve to absolute path to prevent path traversal
+        folder_path = os.path.realpath(os.path.abspath(folder_path))
+        if not os.path.isdir(folder_path):
+            raise ValueError(f"Directory does not exist: {folder_path}")
+
+        target_files = self._get_target_files(folder_path, start_index, image_limit)
+        if not target_files:
+            raise ValueError("No valid images found in the specified range.")
+
+        out_images = []
+        out_filenames = []
+        ui_images = []
+        temp_dir = folder_paths.get_temp_directory()
+        total = len(target_files)
+
+        for idx, filename in enumerate(target_files):
+            img_path = os.path.join(folder_path, filename)
+            img = Image.open(img_path)
+            img = ImageOps.exif_transpose(img)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+
+            # Downscaled thumbnail saved to ComfyUI temp dir for the preview widget.
+            # os.urandom avoids the random module and produces a secure unique prefix.
+            thumb = img.copy()
+            thumb.thumbnail((512, 512), Image.Resampling.LANCZOS)
+            temp_filename = f"iter_thumb_{os.urandom(8).hex()}_{filename}"
+            thumb.save(os.path.join(temp_dir, temp_filename), format="JPEG")
+            ui_entry = {"filename": temp_filename, "subfolder": "", "type": "temp", "original_filename": filename}
+            ui_images.append(ui_entry)
+
+            # Send real-time preview update to the JS frontend
+            if unique_id is not None and PromptServer is not None:
+                PromptServer.instance.send_sync("iterator_preview", {
+                    "node": str(unique_id),
+                    "index": idx,
+                    "total": total,
+                    "filename": temp_filename,
+                    "subfolder": "",
+                    "type": "temp",
+                    "original_filename": filename
+                })
+
+            img_array = np.array(img).astype(np.float32) / 255.0
+            out_images.append(torch.from_numpy(img_array).unsqueeze(0))
+            out_filenames.append(filename)
+
+        return {"ui": {"images": ui_images}, "result": (out_images, out_filenames)}
+
+
+class IteratorCurrentFilename:
+    """
+    Helper node for DirectoryImageIterator.
+
+    Problem: DirectoryImageIterator emits filename as a list (OUTPUT_IS_LIST=True).
+    When that list is wired directly to SaveImage.filename_prefix, ComfyUI does not
+    expand it the same way it expands IMAGE tensors, so the save node receives the
+    whole Python list and raises "expected string or bytes-like object, got 'list'".
+
+    Solution: Place this node between DirectoryImageIterator.filename and
+    SaveImage.filename_prefix.  It receives the full list via INPUT_IS_LIST=True,
+    strips the file extension (filename_prefix must not include it), and re-emits the
+    result with OUTPUT_IS_LIST=True so ComfyUI's execution engine forwards one string
+    per iteration step to the downstream node.
+
+    Wiring:
+        DirectoryImageIterator.filename  →  this node  →  SaveImage.filename_prefix
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "filename": ("STRING", {"forceInput": True}),
+            }
+        }
+
+    INPUT_IS_LIST = True
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("filename_prefix",)
+    OUTPUT_IS_LIST = (True,)
+    FUNCTION = "extract"
+    CATEGORY = "image/iteration"
+
+    def extract(self, filename):
+        """Strip extensions so each string is ready for use as filename_prefix."""
+        return ([os.path.splitext(f)[0] for f in filename],)
+
+
 NODE_CLASS_MAPPINGS = {
     "RGBA_to_RGB_Lossless": RGBA_to_RGB_Lossless,
     "SaveImageWithSidecarTxt_V2": SaveImageWithSidecarTxt_V2,
     "MegapixelResizeNode": MegapixelResizeNode,
+    "DirectoryImageIterator": DirectoryImageIterator,
+    "IteratorCurrentFilename": IteratorCurrentFilename,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "RGBA_to_RGB_Lossless": "RGBA zu RGB (Verlustfrei)",
     "SaveImageWithSidecarTxt_V2": "Bild mit Sidecar TXT speichern V2",
     "MegapixelResizeNode": "Megapixel Resize",
+    "DirectoryImageIterator": "Directory Image Iterator",
+    "IteratorCurrentFilename": "Iterator Current Filename",
 }

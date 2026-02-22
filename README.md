@@ -39,6 +39,7 @@ My Utility Nodes is a ComfyUI custom node package that provides enhanced UI cont
 - **Latent Operations**: Specialized nodes for Qwen models and latent noise blending
 - **Audio Export**: MP3 export with quality control and batch processing support
 - **Enhanced Parameter Control**: Specialized sliders for CFG and model sampling parameters
+- **Image Iteration with Pagination**: Browse loaded images interactively with prev/next controls
 - **Modular Architecture**: Clean organization into 6 logical modules for easy maintenance
 
 ---
@@ -106,6 +107,8 @@ pip install -r requirements.txt
 | Node | Category | Description |
 |------|----------|-------------|
 | **RGBA zu RGB (Verlustfrei)** | `Bildverarbeitung/Konvertierung` | Lossless RGBA to RGB conversion |
+| **Directory Image Iterator** (`DirectoryImageIterator`) | `image/iteration` | Loads a sorted slice of images from a folder and iterates them one-by-one through the downstream graph, with interactive pagination controls |
+| **Iterator Current Filename** (`IteratorCurrentFilename`) | `image/iteration` | Helper node: extracts the single current-iteration filename (without extension) for direct use as `filename_prefix` in Save Image nodes |
 
 ### Audio Processing
 
@@ -210,7 +213,66 @@ pip install -r requirements.txt
 
 ---
 
-### 🖼️ RGBA_to_RGB_Lossless
+### � DirectoryImageIterator
+
+**Purpose:** Load a deterministically sorted slice of images from a local directory and feed them one-by-one into the downstream graph, with live canvas thumbnail preview and interactive pagination controls.
+
+**Inputs:**
+- `folder_path` (STRING): Absolute path to the source image directory
+- `start_index` (INT): Zero-based offset into the sorted list of images (default: 0)
+- `image_limit` (INT): Maximum number of images to process; 0 means all remaining (default: 0)
+
+**Outputs:**
+- `image` (IMAGE): Individual image tensors, one per downstream execution pass
+- `filename` (STRING): Corresponding base filename for each image
+
+**Technical Implementation:**
+- Files are sorted alphanumerically and sliced with `start_index` / `image_limit` for deterministic, repeatable results
+- `OUTPUT_IS_LIST = (True, True)` activates ComfyUI's sequential list-iteration engine — the downstream graph runs once per image, enabling mixed-resolution datasets without dimensional crashes
+- EXIF rotation is corrected automatically via `ImageOps.exif_transpose`
+- Tensors are cast to `float32` in `[0, 1]` range with shape `(1, H, W, 3)` — the standard ComfyUI IMAGE format
+- `IS_CHANGED` computes a SHA-256 hash of filenames and modification timestamps in the active slice; the cache is only invalidated when the content of that slice actually changes
+- Input path is resolved with `os.path.realpath` to prevent path traversal attacks
+- A 512×512 max JPEG thumbnail is saved to the ComfyUI temp directory per image; the first thumbnail is displayed via a custom LiteGraph canvas widget that auto-resizes the node to maintain aspect ratio
+- **Interactive pagination:** After execution, ◀ / ▶ arrow buttons appear below the preview image, allowing the user to browse through all loaded images manually. Navigation wraps around (past the last image returns to the first, and vice versa). A page counter between the buttons shows the current position (e.g., "3 / 10"). Buttons highlight on hover for visual feedback.
+
+**Supported formats:** `.jpg`, `.jpeg`, `.png`, `.webp`, `.tiff`
+
+**Use Cases:**
+- Sequential upscaling of an entire image folder
+- Automated dataset curation pipelines
+- Video frame-by-frame processing
+- Batch image-to-image translation workflows with variable resolutions
+
+> **Tip:** To use the `filename` output as `filename_prefix` in a Save Image node, always route it through the **Iterator Current Filename** helper node (see below). Wiring the list directly causes the error *"expected string or bytes-like object, got 'list'"*.
+
+---
+
+### 🏷️ IteratorCurrentFilename
+
+**Purpose:** Bridge node that extracts the single, current-iteration filename from `DirectoryImageIterator` and prepares it as a clean string for `SaveImage.filename_prefix`.
+
+**The problem it solves:**  
+`DirectoryImageIterator` emits `filename` as a Python list (`OUTPUT_IS_LIST = True`). ComfyUI correctly expands IMAGE tensors through downstream nodes, but wiring a `STRING` list directly to `filename_prefix` passes the entire list object, causing:  
+`ValueError: expected string or bytes-like object, got 'list'`
+
+**Inputs:**
+- `filename` (STRING, `forceInput`): The filename list from `DirectoryImageIterator`
+
+**Outputs:**
+- `filename_prefix` (STRING): One filename per iteration step, with the file extension stripped (required by ComfyUI's Save Image node)
+
+**Wiring:**
+```
+DirectoryImageIterator.filename  →  Iterator Current Filename  →  SaveImage.filename_prefix
+DirectoryImageIterator.image     →  Megapixel Resize (or any processing)  →  SaveImage.images
+```
+
+**Technical note:** The node uses `INPUT_IS_LIST = True` to accept the full list in one call, strips extensions with `os.path.splitext`, then re-emits with `OUTPUT_IS_LIST = (True,)` so ComfyUI forwards exactly one string per downstream execution step.
+
+---
+
+### �🖼️ RGBA_to_RGB_Lossless
 
 **Purpose:** Zero-copy conversion from 4-channel (RGBA) to 3-channel (RGB) images
 
@@ -572,7 +634,8 @@ __init__.py                  # Package entry point with NODE_CLASS_MAPPINGS
 │   ├── String3.js           # String input widget
 │   ├── InputSwitch.js       # Two-input switch toggle widget
 │   ├── InputSwitch3.js      # Three-input switch toggle widget
-│   └── switch_node.js       # Switch command center widget
+│   ├── switch_node.js       # Switch command center widget
+│   └── DirectoryImageIterator.js  # Directory iterator thumbnail preview widget
 └── README.md                # This file
 ```
 
@@ -590,7 +653,7 @@ The package is organized into **6 logical modules** for better maintainability:
    - mxInputSwitch, mxInputSwitch3, mxSizeSwitch, BatchLogicSwitch, SwitchCommandCenter
 
 4. **image_nodes.py** - Image processing and file operations
-   - RGBA_to_RGB_Lossless, MegapixelResizeNode, SaveImageWithSidecarTxt_V2
+   - RGBA_to_RGB_Lossless, MegapixelResizeNode, SaveImageWithSidecarTxt_V2, DirectoryImageIterator, IteratorCurrentFilename
 
 5. **latent_nodes.py** - Latent space operations
    - EmptyQwen2512LatentImage, LatentNoiseBlender, VAEDecodeAudioTiled, ACELatentBlend, GenerateNoiseForFlux2Klein
@@ -1036,6 +1099,17 @@ Generate 128-channel noise at f16 spatial resolution for Flux 2 Klein workflows.
 
 Export generated audio from text-to-speech or music generation models directly to MP3 format. Choose quality preset from 64k to 320k based on your needs. Batch audio is automatically processed and saved with index numbers (e.g., `my_audio_001.mp3`, `my_audio_002.mp3`). Supports custom output paths and automatic overwrite protection.
 
+### Example 16: Sequential Folder Processing with Per-Image Filenames
+
+```
+[DirectoryImageIterator]
+  folder_path: "D:\MyImages"    ── image    → [Megapixel Resize] ──────────────→ [SaveImage]
+  start_index: 0                                                                      ↑
+  image_limit: 0                ── filename → [Iterator Current Filename] ── filename_prefix
+```
+
+Processes every image in a folder one-by-one and saves each result named after its source file (e.g., `photo_001.png`). The **Iterator Current Filename** node is the essential bridge: it accepts the full filename list from the iterator, strips the file extension, and forwards exactly one clean string per step to `filename_prefix`. Without it, connecting `filename` directly causes `"expected string or bytes-like object, got 'list'"`.
+
 ---
 
 ## License
@@ -1065,6 +1139,29 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v2.5.1 (2026-02-22)
+- **Directory Image Iterator** — Added interactive pagination controls
+  - ◀ / ▶ navigation arrows below the preview image for browsing all loaded images after execution
+  - Wrap-around navigation (past last → first, before first → last)
+  - Page counter between buttons showing current position (e.g., "3 / 10")
+  - Hover highlight feedback on navigation buttons
+  - Mouse events consumed by buttons to prevent accidental node dragging
+
+### v2.5.0 (2026-02-22)
+- Added **Directory Image Iterator** (`DirectoryImageIterator`) for sequential folder-based image processing
+  - Ingests a sorted, deterministically sliced subset of images from any local directory
+  - `OUTPUT_IS_LIST` paradigm: iterates one image at a time through the downstream graph — no batch-dimension crashes on mixed resolutions
+  - Cryptographic SHA-256 directory hashing in `IS_CHANGED` for smart cache invalidation (re-executes only when the slice actually changes)
+  - Path traversal protection via `os.path.realpath` sanitization
+  - Live thumbnail preview painted directly onto the LiteGraph canvas with automatic aspect-ratio-correct node resizing
+  - Thumbnail state persisted through `app.nodeOutputs` for within-session recovery after graph reloads
+  - Lightweight JPEG thumbnails (max 512×512) saved to ComfyUI temp directory with secure random prefixes
+- Added **Iterator Current Filename** (`IteratorCurrentFilename`) helper node
+  - Bridges `DirectoryImageIterator.filename` to `SaveImage.filename_prefix` without type errors
+  - Accepts the full filename list via `INPUT_IS_LIST = True`, strips file extensions, re-emits via `OUTPUT_IS_LIST = (True,)`
+  - Fixes `"expected string or bytes-like object, got 'list'"` when saving iterated images by name
+- **Total Node Count:** 24 nodes organized across 6 modules
 
 ### v2.4.0 (2026-02-16)
 - Added **Generate Noise (Flux 2 Klein)** (`GenerateNoiseForFlux2Klein`) for parameterized noise generation
