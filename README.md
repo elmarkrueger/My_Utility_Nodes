@@ -84,6 +84,7 @@ pip install -r requirements.txt
 | **Float 4** (`mxFloat4`) | `utils/slider` | Four independent float sliders (0.00-1.00, 0.01 steps) |
 | **CFG Guider** (`mxCFGGuider`) | `utils/slider` | Specialized CFG parameter control |
 | **Model Sampling Float** (`mxModelSamplingFloat`) | `utils/slider` | Model sampling parameter slider (0.00-15.00) |
+| **Flux Max Shift** (`mxFluxMaxShift`) | `utils/sampling` | Calculates max_shift for ModelSamplingFlux from image dimensions |
 
 ### Multi-Input Nodes
 
@@ -416,7 +417,37 @@ DirectoryImageIterator.image     →  Megapixel Resize (or any processing)  → 
 
 ---
 
-### 🔢 mxInt3 & mxString3
+### � mxFluxMaxShift
+
+**Purpose:** Replaces the Chroma Radiance subgraph with a single node that calculates the `max_shift` value for the **ModelSamplingFlux** node directly from image dimensions.
+
+**Inputs:**
+- `width` (INT, forceInput): Image width in pixels (1-16384, default: 1024)
+- `height` (INT, forceInput): Image height in pixels (1-16384, default: 1024)
+- `multiplier` (FLOAT): Scaling multiplier applied to the pixel count (0.01-5.00, default: 1.00, step: 0.01)
+- `divisor` (INT): Divisor for the final value (1-100000000, default: 1000000)
+
+**Outputs:**
+- `max_shift` (FLOAT): The calculated max_shift value for ModelSamplingFlux
+
+**Formula:**
+```
+max_shift = (width × height × multiplier) / divisor
+```
+
+**Example:** For a 1024×1024 image with multiplier=1.0 and divisor=1000000:
+```
+max_shift = (1024 × 1024 × 1.0) / 1000000 = 1.048576
+```
+
+**Use Cases:**
+- Calculating the optimal `max_shift` parameter for ModelSamplingFlux based on actual image resolution
+- Replacing multi-node math subgraphs (multiply → multiply → divide) with a single clean node
+- Dynamic max_shift adjustment that automatically adapts when image dimensions change
+
+---
+
+### �🔢 mxInt3 & mxString3
 
 **Purpose:** Batch input for multiple values of the same type
 
@@ -644,7 +675,7 @@ __init__.py                  # Package entry point with NODE_CLASS_MAPPINGS
 The package is organized into **6 logical modules** for better maintainability:
 
 1. **slider_nodes.py** - Parameter sliders and control widgets
-   - mxSlider, mxSlider2D, mxCFGGuider, mxModelSamplingFloat
+   - mxSlider, mxSlider2D, mxCFGGuider, mxModelSamplingFloat, mxFluxMaxShift
 
 2. **multi_value_nodes.py** - Multiple value inputs
    - mxFloat4, mxFloat5, mxInt3, mxString3
@@ -1099,7 +1130,18 @@ Generate 128-channel noise at f16 spatial resolution for Flux 2 Klein workflows.
 
 Export generated audio from text-to-speech or music generation models directly to MP3 format. Choose quality preset from 64k to 320k based on your needs. Batch audio is automatically processed and saved with index numbers (e.g., `my_audio_001.mp3`, `my_audio_002.mp3`). Supports custom output paths and automatic overwrite protection.
 
-### Example 16: Sequential Folder Processing with Per-Image Filenames
+### Example 17: Flux Max Shift from Image Dimensions
+
+```
+[Slider 2D] ── width  ──→ [Flux Max Shift] ── max_shift ──→ [ModelSamplingFlux]
+             ── height ──↗   (multiplier: 1.0, divisor: 1000000)
+```
+
+Automatically calculate the `max_shift` parameter from image width and height. Replaces the Chroma Radiance multi-node subgraph (multiply × multiply × divide) with a single node. The output plugs directly into `max_shift` on the ModelSamplingFlux node.
+
+---
+
+### Example 17: Sequential Folder Processing with Per-Image Filenames
 
 ```
 [DirectoryImageIterator]
@@ -1139,6 +1181,14 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v2.6.0 (2026-02-22)
+- Added **Flux Max Shift** (`mxFluxMaxShift`) — single-node replacement for the Chroma Radiance subgraph
+  - Calculates `max_shift` for ModelSamplingFlux from image width, height, a user-adjustable multiplier, and divisor
+  - Formula: `(width × height × multiplier) / divisor`
+  - `forceInput` width/height inputs for direct wiring from upstream dimension nodes
+  - Adjustable multiplier (0.01–5.00) and divisor (default 1 000 000) for full control
+- **Total Node Count:** 25 nodes organized across 6 modules
 
 ### v2.5.1 (2026-02-22)
 - **Directory Image Iterator** — Added interactive pagination controls

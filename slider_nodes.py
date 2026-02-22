@@ -124,11 +124,41 @@ class mxModelSamplingFloat:
         return (value,)
 
 
+class mxFluxMaxShift:
+    """
+    Calculates the max_shift value for the ModelSamplingFlux node.
+    Replaces the Chroma Radiance subgraph with a single node.
+    Formula: max_shift = (width * height * multiplier) / divisor
+    """
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "width": ("INT", {"default": 1024, "min": 1, "max": 16384, "step": 1, "forceInput": True, "tooltip": "Image width in pixels"}),
+                "height": ("INT", {"default": 1024, "min": 1, "max": 16384, "step": 1, "forceInput": True, "tooltip": "Image height in pixels"}),
+                "multiplier": ("FLOAT", {"default": 1.00, "min": 0.01, "max": 5.00, "step": 0.01, "tooltip": "Scaling multiplier applied to the pixel count"}),
+                "divisor": ("INT", {"default": 1000000, "min": 1, "max": 100000000, "step": 1, "tooltip": "Divisor for the final value (default: 1M pixels)"}),
+            },
+        }
+
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("max_shift",)
+
+    FUNCTION = "calculate"
+    CATEGORY = "utils/sampling"
+
+    def calculate(self, width, height, multiplier, divisor):
+        max_shift = (width * height * multiplier) / divisor
+        return (max_shift,)
+
+
 NODE_CLASS_MAPPINGS = {
     "mxSlider": mxSlider,
     "mxSlider2D": mxSlider2D,
     "mxCFGGuider": mxCFGGuider,
     "mxModelSamplingFloat": mxModelSamplingFloat,
+    "mxFluxMaxShift": mxFluxMaxShift,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -136,4 +166,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "mxSlider2D": "Slider 2D",
     "mxCFGGuider": "CFG Guider",
     "mxModelSamplingFloat": "Model Sampling Float",
+    "mxFluxMaxShift": "Flux Max Shift",
 }
