@@ -122,6 +122,12 @@ pip install -r requirements.txt
 | **Megapixel Resize** (`MegapixelResizeNode`) | `Image/Resizing` | Resizes images to target megapixel count while maintaining aspect ratio |
 | **Bild mit Sidecar TXT speichern V2** (`SaveImageWithSidecarTxt_V2`) | `Custom_Research/IO` | Saves images with a synchronized text file containing metadata (supports 3-pass sampling details) |
 
+### Text Processing
+
+| Node | Category | Description |
+|------|----------|-------------|
+| **LLM Prompt Splitter** (`LLMPromptSplitter`) | `utils/text` | Splits structured LLM output into separate positive and negative prompts |
+
 ### Latent Nodes
 
 | Node | Category | Description |
@@ -649,6 +655,7 @@ max_shift = (1024 × 1024 × 1.0) / 1000000 = 1.048576
 ```
 __init__.py                  # Package entry point with NODE_CLASS_MAPPINGS
 ├── audio_nodes.py           # Audio processing and export nodes
+├── text_nodes.py            # Text processing nodes
 ├── slider_nodes.py          # Slider and parameter control nodes
 ├── multi_value_nodes.py     # Multi-value input nodes (floats, ints, strings)
 ├── switch_nodes.py          # All switching and logic routing nodes
@@ -672,7 +679,7 @@ __init__.py                  # Package entry point with NODE_CLASS_MAPPINGS
 
 ### Module Organization
 
-The package is organized into **6 logical modules** for better maintainability:
+The package is organized into **7 logical modules** for better maintainability:
 
 1. **slider_nodes.py** - Parameter sliders and control widgets
    - mxSlider, mxSlider2D, mxCFGGuider, mxModelSamplingFloat, mxFluxMaxShift
@@ -691,6 +698,9 @@ The package is organized into **6 logical modules** for better maintainability:
 
 6. **audio_nodes.py** - Audio processing and export
    - SaveAudioAsMP3_Custom
+
+7. **text_nodes.py** - Text processing
+   - LLMPromptSplitter
 **Use Cases:**
 - Enable/disable entire workflow branches
 - Conditional execution of expensive operations
@@ -1154,6 +1164,17 @@ Processes every image in a folder one-by-one and saves each result named after i
 
 ---
 
+### Example 18: LLM Vision to Prompt Pipeline
+
+```
+[LLM Vision Node] ── llm_output ──→ [LLM Prompt Splitter] ── positive ──→ [CLIP Text Encode (Positive)]
+     (image input)                                          ── negative ──→ [CLIP Text Encode (Negative)]
+```
+
+Connect the text output of any LLM vision node (e.g., Florence, LLaVA, Qwen-VL) that describes an image using the structured two-paragraph format. The splitter extracts the positive and negative prompts automatically, ready for CLIP encoding.
+
+---
+
 ## License
 
 This project is released under the MIT License (or as specified by the author).
@@ -1181,6 +1202,14 @@ For bugs and feature requests, please open an issue on the [GitHub repository](h
 ---
 
 ## Changelog
+
+### v2.7.0 (2026-02-23)
+- Added **LLM Prompt Splitter** (`LLMPromptSplitter`) for parsing structured LLM vision output
+  - Splits text on the first blank line into positive and negative prompts
+  - `forceInput` string input for direct wiring from LLM nodes
+  - Two string outputs ready for CLIP Text Encode nodes
+- **New Module:** `text_nodes.py` - Text processing nodes
+- **Total Node Count:** 26 nodes organized across 7 modules
 
 ### v2.6.0 (2026-02-22)
 - Added **Flux Max Shift** (`mxFluxMaxShift`) — single-node replacement for the Chroma Radiance subgraph
