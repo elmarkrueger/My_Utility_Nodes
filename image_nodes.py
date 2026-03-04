@@ -564,12 +564,159 @@ class IteratorCurrentFilename:
         return ([os.path.splitext(f)[0] for f in filename],)
 
 
+class MyImageStitch:
+    """
+    Interaktive Image-Stitching-Node: Kombiniert bis zu 10 Bilder zu einem.
+    Unterstützt horizontale und vertikale Anordnung mit Drag-and-Drop-
+    Umordnung über ein interaktives Canvas im Frontend.
+    """
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "layout": (["Horizontal", "Vertical"],),
+                "padding": ("INT", {"default": 0, "min": 0, "max": 200, "step": 1}),
+                "order_payload": ("STRING", {"default": "[]"}),
+            },
+            "optional": {
+                "image_1": ("IMAGE",),
+                "image_2": ("IMAGE",),
+                "image_3": ("IMAGE",),
+                "image_4": ("IMAGE",),
+                "image_5": ("IMAGE",),
+                "image_6": ("IMAGE",),
+                "image_7": ("IMAGE",),
+                "image_8": ("IMAGE",),
+                "image_9": ("IMAGE",),
+                "image_10": ("IMAGE",),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("stitched_image",)
+    FUNCTION = "stitch"
+    CATEGORY = "image/compositing"
+
+    def stitch(self, layout, padding, order_payload, unique_id=None, **kwargs):
+        # Aktive Bilder sammeln
+        active = {}
+        for i in range(1, 11):
+            key = f"image_{i}"
+            if key in kwargs and kwargs[key] is not None:
+                active[key] = kwargs[key]
+
+        if not active:
+            return (torch.zeros(1, 64, 64, 3, dtype=torch.float32),)
+
+        # Reihenfolge aus dem Frontend-Payload parsen
+        try:
+            order = json.loads(order_payload)
+        except (json.JSONDecodeError, TypeError):
+            order = []
+
+        # Geordnete Liste aufbauen
+        ordered = []
+        used = set()
+        if order:
+            for entry in order:
+                src = entry.get("source_socket") if isinstance(entry, dict) else None
+                if src and src in active and src not in used:
+                    ordered.append(active[src])
+                    used.add(src)
+        # Verbleibende Bilder anfügen (nicht in order enthalten)
+        for key in sorted(active.keys()):
+            if key not in used:
+                ordered.append(active[key])
+
+        # Tensoren zu PIL-Bildern konvertieren
+        pil_images = []
+        for tensor in ordered:
+            t = tensor[0] if tensor.dim() == 4 else tensor
+            arr = torch.clamp(t * 255.0, 0, 255).cpu().to(torch.uint8).numpy()
+            pil_images.append(Image.fromarray(arr).convert("RGBA"))
+            del t, arr
+
+        if not pil_images:
+            return (torch.zeros(1, 64, 64, 3, dtype=torch.float32),)
+
+        # Bilder auf gleiche Höhe (horizontal) bzw. gleiche Breite (vertikal) skalieren
+        if layout == "Horizontal":
+            target_h = max(im.height for im in pil_images)
+            resized = []
+            for im in pil_images:
+                if im.height != target_h:
+                    scale = target_h / im.height
+                    new_w = max(1, round(im.width * scale))
+                    resized.append(im.resize((new_w, target_h), Image.LANCZOS))
+                    im.close()
+                else:
+                    resized.append(im)
+            pil_images = resized
+        else:
+            target_w = max(im.width for im in pil_images)
+            resized = []
+            for im in pil_images:
+                if im.width != target_w:
+                    scale = target_w / im.width
+                    new_h = max(1, round(im.height * scale))
+                    resized.append(im.resize((target_w, new_h), Image.LANCZOS))
+                    im.close()
+                else:
+                    resized.append(im)
+            pil_images = resized
+
+        # Canvas-Dimensionen berechnen
+        if layout == "Horizontal":
+            total_w = sum(im.width for im in pil_images) + padding * max(0, len(pil_images) - 1)
+            total_h = max(im.height for im in pil_images)
+        else:
+            total_w = max(im.width for im in pil_images)
+            total_h = sum(im.height for im in pil_images) + padding * max(0, len(pil_images) - 1)
+
+        # Master-Canvas erzeugen (transparent)
+        canvas = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
+
+        # Bilder einfügen
+        x_off, y_off = 0, 0
+        for pil_img in pil_images:
+            canvas.paste(pil_img, (x_off, y_off), mask=pil_img)
+            if layout == "Horizontal":
+                x_off += pil_img.width + padding
+            else:
+                y_off += pil_img.height + padding
+
+        # PIL-Bilder freigeben
+        for im in pil_images:
+            im.close()
+        del pil_images
+
+        # Zurück in RGB konvertieren und als Tensor ausgeben
+        canvas_rgb = canvas.convert("RGB")
+        canvas.close()
+        del canvas
+        np_result = np.array(canvas_rgb, dtype=np.float32) / 255.0
+        canvas_rgb.close()
+        del canvas_rgb
+        result = torch.from_numpy(np_result).unsqueeze(0)
+
+        return (result,)
+
+    @classmethod
+    def IS_CHANGED(s, **kwargs):
+        return float("NaN")
+
+
 NODE_CLASS_MAPPINGS = {
     "RGBA_to_RGB_Lossless": RGBA_to_RGB_Lossless,
     "SaveImageWithSidecarTxt_V2": SaveImageWithSidecarTxt_V2,
     "MegapixelResizeNode": MegapixelResizeNode,
     "DirectoryImageIterator": DirectoryImageIterator,
     "IteratorCurrentFilename": IteratorCurrentFilename,
+    "MyImageStitch": MyImageStitch,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -578,4 +725,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MegapixelResizeNode": "Megapixel Resize",
     "DirectoryImageIterator": "Directory Image Iterator",
     "IteratorCurrentFilename": "Iterator Current Filename",
+    "MyImageStitch": "Image Stitch (Drag & Drop)",
 }
